@@ -1,6 +1,5 @@
 #! perl
-# Copyright (C) 2007-2008, Parrot Foundation.
-# auto/pcre-01.t
+# Copyright (C) 2008-2014, Parrot Foundation.
 
 use strict;
 use warnings;
@@ -13,7 +12,7 @@ use Parrot::Configure::Step::Test;
 use Parrot::Configure::Test qw(
     test_step_constructor_and_description
 );
-use IO::CaptureOutput qw| capture |;
+use Parrot::Configure::Utils qw| capture |;
 
 ########## --without-pcre ##########
 
@@ -35,7 +34,7 @@ $conf->add_steps($pkg);
 $conf->options->set( %{$args} );
 my $step = test_step_constructor_and_description($conf);
 ok( $step->runstep($conf), "runstep() returned true value");
-is( $step->result(), 'no', "Got expected result" );
+is( $step->result(), 'skipped', "Got expected result" );
 is( $conf->data->get( 'HAS_PCRE' ), 0,
     "Got expected value for 'HAS_PCRE'");
 
@@ -138,10 +137,11 @@ $test = q{pcre 4.0};
 pass("Completed all tests in $0");
 
 ################### DOCUMENTATION ###################
+=encoding utf8
 
 =head1 NAME
 
-  auto/pcre-01.t - test auto::pcre
+auto/pcre-01.t - test auto::pcre
 
 =head1 SYNOPSIS
 
@@ -155,7 +155,7 @@ The tests in this file test configuration step class auto::pcre.
 
 =head1 AUTHOR
 
-Alberto Sim√es.
+Alberto Sim√µes
 
 =head1 SEE ALSO
 

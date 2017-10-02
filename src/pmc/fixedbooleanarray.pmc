@@ -1,11 +1,13 @@
 /*
-Copyright (C) 2001-2010, Parrot Foundation.
+Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
-src/pmc/fixedbooleanarray.pmc - fixed size array for booleans only
+src/pmc/fixedbooleanarray.pmc - FixedBooleanArray PMC
 
 =head1 DESCRIPTION
+
+Fixed size array for booleans only.
 
 The C<FixedBooleanArray> PMC implements an array of fixed size, which
 stores booleans.  It uses the C<Boolean> PMC for all conversions.  The
@@ -88,8 +90,8 @@ Initializes the array.
         const size_t size_in_bytes = get_size_in_bytes(size);
 
         if (size < 0)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                _("FixedBooleanArray: Cannot set array size to a negative number (%d)"), size);
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                    "illegal argument");
 
         SET_ATTR_size(INTERP, SELF, size);
         SET_ATTR_resize_threshold(INTERP, SELF, size_in_bytes * BITS_PER_CHAR);
@@ -109,7 +111,7 @@ Destroys the array.
 
 */
 
-    VTABLE void destroy() {
+    VTABLE void destroy() :no_wb {
         unsigned char *bit_array;
         GET_ATTR_bit_array(INTERP, SELF, bit_array);
         if (bit_array)
@@ -126,7 +128,7 @@ Creates and returns a copy of the array.
 
 */
 
-    VTABLE PMC *clone() {
+    VTABLE PMC *clone() :no_wb {
         unsigned char * my_bit_array;
         UINTVAL         resize_threshold, size;
         PMC *   const   dest   = Parrot_pmc_new(INTERP, SELF->vtable->base_type);
@@ -143,7 +145,7 @@ Creates and returns a copy of the array.
             SET_ATTR_resize_threshold(INTERP, dest, resize_threshold);
 
             clone_bit_array = mem_gc_allocate_n_typed(INTERP, size_in_bytes, unsigned char);
-            mem_sys_memcopy(clone_bit_array, my_bit_array, size_in_bytes);
+            memcpy(clone_bit_array, my_bit_array, size_in_bytes);
 
             SET_ATTR_bit_array(INTERP, dest, clone_bit_array);
         }
@@ -162,7 +164,7 @@ fixed sized array).
 =cut
 
 */
-    VTABLE INTVAL get_bool() {
+    VTABLE INTVAL get_bool() :no_wb {
         return SELF.elements() ? 1 : 0;
     }
 
@@ -174,7 +176,7 @@ fixed sized array).
 
 */
 
-    VTABLE INTVAL elements() {
+    VTABLE INTVAL elements() :no_wb {
         UINTVAL size;
         GET_ATTR_size(INTERP, SELF, size);
         return size;
@@ -190,7 +192,7 @@ Returns the number of elements in the array.
 
 */
 
-    VTABLE INTVAL get_integer() {
+    VTABLE INTVAL get_integer() :no_wb {
         return SELF.elements();
     }
 
@@ -204,15 +206,17 @@ Returns the integer value of the element at index C<key>.
 
 */
 
-    VTABLE INTVAL get_integer_keyed_int(INTVAL key) {
+    VTABLE INTVAL get_integer_keyed_int(INTVAL key) :no_wb {
         UINTVAL               size;
         const unsigned char * bit_array;
         GET_ATTR_bit_array(INTERP, SELF, bit_array);
         GET_ATTR_size(INTERP, SELF, size);
 
+        if (key < 0)
+            key += size;
         if (key < 0 || (UINTVAL)key >= size)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                "FixedBooleanArray: index out of bounds!");
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                    "index out of bounds");
 
         return (bit_array[key / BITS_PER_CHAR] & (1 << (key % BITS_PER_CHAR))) ? 1 : 0;
     }
@@ -227,7 +231,7 @@ Returns the integer value of the element at index C<*key>.
 
 */
 
-    VTABLE INTVAL get_integer_keyed(PMC *key) {
+    VTABLE INTVAL get_integer_keyed(PMC *key) :no_wb {
         /* simple int keys only */
         const INTVAL k = VTABLE_get_integer(INTERP, key);
         return SELF.get_integer_keyed_int(k);
@@ -244,7 +248,7 @@ Returns the floating-point value of the element at index C<key>.
 
 */
 
-    VTABLE FLOATVAL get_number_keyed_int(INTVAL key) {
+    VTABLE FLOATVAL get_number_keyed_int(INTVAL key) :no_wb {
         const INTVAL i = SELF.get_integer_keyed_int(key);
         return (FLOATVAL)i;
     }
@@ -259,7 +263,7 @@ Returns the floating-point value of the element at index C<*key>.
 
 */
 
-    VTABLE FLOATVAL get_number_keyed(PMC *key) {
+    VTABLE FLOATVAL get_number_keyed(PMC *key) :no_wb {
         const INTVAL k = VTABLE_get_integer(INTERP, key);
         return SELF.get_number_keyed_int(k);
     }
@@ -274,19 +278,17 @@ Returns the Parrot string representation of the array.
 
 */
 
-    VTABLE STRING *get_string() {
+    VTABLE STRING *get_string() :no_wb {
         STRING *str   = STRINGNULL;
         UINTVAL i;
         const UINTVAL elems = SELF.elements();
 
-        STRING * const zero = CONST_STRING(INTERP, "0");
-        STRING * const one  = CONST_STRING(INTERP, "1");
+        const STRING * const zero = CONST_STRING(INTERP, "0");
+        const STRING * const one  = CONST_STRING(INTERP, "1");
 
         for (i = 0; i < elems; ++i) {
-            if (SELF.get_integer_keyed_int((INTVAL)i))
-                str = Parrot_str_concat(INTERP, str, one);
-            else
-                str = Parrot_str_concat(INTERP, str, zero);
+            str = Parrot_str_concat(INTERP, str,
+                SELF.get_integer_keyed_int((INTVAL)i) ? one : zero);
         }
 
         return str;
@@ -303,7 +305,7 @@ Returns the Parrot string value of the element at index C<key>.
 
 */
 
-    VTABLE STRING *get_string_keyed_int(INTVAL key) {
+    VTABLE STRING *get_string_keyed_int(INTVAL key) :no_wb {
         PMC * const val = SELF.get_pmc_keyed_int(key);
         return VTABLE_get_string(INTERP, val);
     }
@@ -318,7 +320,7 @@ Returns the Parrot string value of the element at index C<*key>.
 
 */
 
-    VTABLE STRING *get_string_keyed(PMC *key) {
+    VTABLE STRING *get_string_keyed(PMC *key) :no_wb {
         const INTVAL k = VTABLE_get_integer(INTERP, key);
         return SELF.get_string_keyed_int(k);
     }
@@ -334,7 +336,7 @@ Returns the PMC value of the element at index C<key>.
 
 */
 
-    VTABLE PMC *get_pmc_keyed_int(INTVAL key) {
+    VTABLE PMC *get_pmc_keyed_int(INTVAL key) :no_wb {
         return Parrot_pmc_new_init_int(INTERP, enum_class_Boolean,
                 SELF.get_integer_keyed_int(key));
     }
@@ -349,7 +351,7 @@ Returns the PMC value of the element at index C<*key>.
 
 */
 
-    VTABLE PMC *get_pmc_keyed(PMC *key) {
+    VTABLE PMC *get_pmc_keyed(PMC *key) :no_wb {
         const INTVAL k = VTABLE_get_integer(INTERP, key);
         return SELF.get_pmc_keyed_int(k);
     }
@@ -370,10 +372,9 @@ Resizes the array to C<size> elements.
         unsigned char *bit_array;
 
         GET_ATTR_size(INTERP, SELF, old_size);
-
         if (old_size || size < 1)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                "FixedBooleanArray: Can't resize!");
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                    "Can't resize");
 
         SET_ATTR_size(INTERP, SELF, size);
         SET_ATTR_resize_threshold(INTERP, SELF, size_in_bytes * BITS_PER_CHAR);
@@ -398,9 +399,11 @@ Sets the integer value of the element at index C<key> to C<value>.
         GET_ATTR_bit_array(INTERP, SELF, bit_array);
         GET_ATTR_size(INTERP, SELF, size);
 
+        if (key < 0)
+            key += size;
         if (key < 0 || (UINTVAL)key >= size)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                "FixedBooleanArray: index out of bounds!");
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                "index out of bounds");
 
         if (value)
             bit_array[key/BITS_PER_CHAR] |=  (1 << (key % BITS_PER_CHAR));
@@ -418,7 +421,7 @@ Sets the integer value of the element at index C<key> to C<value>.
 
 */
 
-    VTABLE void set_integer_keyed(PMC *key, INTVAL value) {
+    VTABLE void set_integer_keyed(PMC *key, INTVAL value) :manual_wb {
         const INTVAL k = VTABLE_get_integer(INTERP, key);
         SELF.set_integer_keyed_int(k, value);
     }
@@ -434,7 +437,7 @@ C<value>.
 
 */
 
-    VTABLE void set_number_keyed_int(INTVAL key, FLOATVAL value) {
+    VTABLE void set_number_keyed_int(INTVAL key, FLOATVAL value) :manual_wb {
         SELF.set_integer_keyed_int(key, !FLOAT_IS_ZERO(value));
     }
 
@@ -449,7 +452,7 @@ C<value>.
 
 */
 
-    VTABLE void set_number_keyed(PMC *key, FLOATVAL value) {
+    VTABLE void set_number_keyed(PMC *key, FLOATVAL value) :manual_wb {
         const INTVAL k = VTABLE_get_integer(INTERP, key);
         SELF.set_number_keyed_int(k, value);
     }
@@ -464,7 +467,7 @@ Sets the Parrot string value of the element at index C<key> to C<value>.
 
 */
 
-    VTABLE void set_string_keyed_int(INTVAL key, STRING *value) {
+    VTABLE void set_string_keyed_int(INTVAL key, STRING *value) :manual_wb {
         INTVAL tempInt;
         PMC * const tempPMC = Parrot_pmc_new(INTERP, enum_class_Boolean);
 
@@ -485,7 +488,7 @@ C<value>.
 
 */
 
-    VTABLE void set_string_keyed(PMC *key, STRING *value) {
+    VTABLE void set_string_keyed(PMC *key, STRING *value) :manual_wb {
         const INTVAL k = VTABLE_get_integer(INTERP, key);
         SELF.set_string_keyed_int(k, value);
     }
@@ -500,7 +503,7 @@ Sets the PMC value of the element at index C<key> to C<*src>.
 
 */
 
-    VTABLE void set_pmc_keyed_int(INTVAL key, PMC *src) {
+    VTABLE void set_pmc_keyed_int(INTVAL key, PMC *src) :manual_wb {
         const INTVAL tempInt = VTABLE_get_integer(INTERP, src);
         SELF.set_integer_keyed_int(key, tempInt);
     }
@@ -516,7 +519,7 @@ C<value>.
 
 */
 
-    VTABLE void set_pmc_keyed(PMC *key, PMC *value) {
+    VTABLE void set_pmc_keyed(PMC *key, PMC *value) :manual_wb {
         const INTVAL k = VTABLE_get_integer(INTERP, key);
         SELF.set_pmc_keyed_int(k, value);
     }
@@ -531,7 +534,7 @@ Return a new iterator for SELF.
 
 */
 
-    VTABLE PMC *get_iter() {
+    VTABLE PMC *get_iter() :no_wb {
         return Parrot_pmc_new_init(INTERP, enum_class_ArrayIterator, SELF);
     }
 
@@ -552,7 +555,7 @@ Used to archive the string.
 =cut
 
 */
-    VTABLE void freeze(PMC *info) {
+    VTABLE void freeze(PMC *info) :no_wb {
         UINTVAL          size, resize_threshold;
         unsigned char  * bit_array;
         STRING   *       s;
@@ -581,15 +584,19 @@ Used to unarchive the string.
         SUPER(info);
 
         {
-            const INTVAL    size      = VTABLE_shift_integer(INTERP, info);
-            STRING * const  s         = VTABLE_shift_string(INTERP, info);
+            const INTVAL    size          = VTABLE_shift_integer(INTERP, info);
+            STRING * const  s             = VTABLE_shift_string(INTERP, info);
+            const size_t    size_in_bytes = get_size_in_bytes(size);
+            unsigned char  *bit_array;
 
-            unsigned char * const bit_array = (unsigned char *)Parrot_str_to_cstring(INTERP, s);
-            const UINTVAL   threshold = Parrot_str_byte_length(INTERP, s) * BITS_PER_CHAR;
+            SELF.set_integer_native(size);
 
-            SET_ATTR_size(INTERP, SELF, size);
-            SET_ATTR_resize_threshold(INTERP, SELF, threshold);
-            SET_ATTR_bit_array(INTERP, SELF, bit_array);
+            if (s->bufused < size_in_bytes)
+                Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_BAD_BUFFER_SIZE,
+                    "FixedBooleanArray: invalid buffer size during thaw");
+
+            GET_ATTR_bit_array(INTERP, SELF, bit_array);
+            memcpy(bit_array, s->strstart, size_in_bytes);
         }
     }
 

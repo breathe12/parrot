@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2006-2010, Parrot Foundation.
+# Copyright (C) 2006-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -20,7 +20,7 @@ Tests the LexInfo PMC.
 
 .sub main :main
     .include 'test_more.pir'
-    plan(5)
+    plan(6)
 
     inspect_test()
     inspect_invalid_test()
@@ -78,14 +78,25 @@ Tests the LexInfo PMC.
 .end
 
 .sub declare_lex_preg_test
-    .const string preg_name = 'foo'
-    .const int preg_value = 42
-    .local pmc li
+    .local pmc li, in, ex, pad
     li = new ['LexInfo']
-    li.'declare_lex_preg'(preg_name, preg_value)
-    .local int r
-    r = li[preg_name]
-    is(r, preg_value, 'declare_lex_preg method')
+    pad = new ['LexPad'], li
+
+    $S0 = "$foo"
+    # dynamic version of .lex "$foo", $P4
+    li.'declare_lex_preg'($S0, 4)
+
+    in = inspect li, 'symbols'
+    $I0 = elements in
+    is($I0, 1, "one lex stored in lex hash")
+
+    $S1 = in[0]
+    is($S1, "$foo", "and it is $foo")
+
+    # But this does not work yet
+    #$P4 = box 'pants'
+    #$P1 = pad["$foo"]
+    #is($P1, "pants", "changed the lex value")
 .end
 
 # Local Variables:

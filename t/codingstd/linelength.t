@@ -75,7 +75,6 @@ sub info_for_first_long_line {
         chomp $line;
         $line =~ s/\t/' ' x (1 + length($`) % 8)/eg;  # expand \t
         next if $line =~ m/https?:\/\//;              # skip long web addresses
-        next if $line =~ m/\$Id:/;
         next if $line =~ m/CONST_STRING\(/;
 
         return sprintf '%s:%d: %d cols', $file, $., length($line)
@@ -93,7 +92,7 @@ sub source_files {
         next if exists $skip_files{$file};
 
         push @files => $full_path
-            if $file =~ m{\.(c|pmc|ops|pod)$};
+            if $file =~ m{\.(c|h|pmc|ops|pod)$};
     }
     return @files;
 }

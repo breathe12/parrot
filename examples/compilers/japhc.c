@@ -12,6 +12,8 @@ examples/compiler/japhc.c
 
 example compiler used by japh16.pasm
 
+Note that this example is broken and needs to be refactored to changed Parrot APIs.
+
 =head1 SYNOPSIS
 
 
@@ -27,8 +29,9 @@ example compiler used by japh16.pasm
  */
 
 #include "parrot/parrot.h"
-#include "parrot/embed.h"
-#include "../../src/pmc/pmc_sub.h"
+#define CONST_STRING(i, s) Parrot_str_new_constant((i), (s))
+#define CONST_STRING_GEN(i, s) Parrot_str_new_constant((i), (s))
+#include "pmc/pmc_sub.h"
 
 #define C_DEBUG 0
 
@@ -39,6 +42,7 @@ example compiler used by japh16.pasm
 #  define cdebug(x)
 #endif
 
+INTVAL dynpmc_class_JaPHC;
 PMC* japh_compiler(PARROT_INTERP, const char *s);
 
 /*
@@ -55,11 +59,13 @@ we use init to register the compiler
 void
 Parrot_lib_japhc_init(PARROT_INTERP, PMC* lib)
 {
-    STRING *cmp;
+    STRING *whoami;
 
     cdebug((stderr, "japhc_init\n"));
-    cmp = Parrot_str_new_constant(interp, "JaPH_Compiler");
-    Parrot_compreg(interp, cmp, japh_compiler);
+    whoami = CONST_STRING_GEN(interp, "JaPHC");
+    dynpmc_class_JaPHC = Parrot_pmc_register_new_type(interp, whoami);
+    /* Parrot_JaPHC_class_init(interp, dynpmc_class_JaPHC, 0); */
+    /* Parrot_compreg(interp, whoami, japh_compiler); */
 }
 
 
@@ -142,7 +148,7 @@ add_const_str(PARROT_INTERP, PackFile_ConstTable *consts, char *str)
         consts->constants = mem_sys_realloc(consts->constants,
                 k * sizeof (PackFile_Constant *));
 
-    /* Allocate a new constant */
+    /* Allocate a new constant. FIXME! */
     consts->constants[--k] = PackFile_Constant_new(interp);
     consts->constants[k]->type = PFC_STRING;
     consts->constants[k]->u.string = Parrot_str_new_init(interp, buf,
@@ -178,7 +184,7 @@ japh_compiler(PARROT_INTERP, const char *program)
      * need some packfile segments
      */
     cur_cs = PF_create_default_segs(interp, "JAPHc", 1);
-    old_cs = Parrot_switch_to_cs(interp, cur_cs, 0);
+    old_cs = Parrot_pf_switch_to_cs(interp, cur_cs, 0);
     /*
      * alloc byte code mem
      */
@@ -221,7 +227,7 @@ japh_compiler(PARROT_INTERP, const char *program)
     }
     if (old_cs) {
         /* restore old byte_code, */
-        (void)Parrot_switch_to_cs(interp, old_cs, 0);
+        (void)Parrot_pf_switch_to_cs(interp, old_cs, 0);
     }
     /*
      * create sub PMC

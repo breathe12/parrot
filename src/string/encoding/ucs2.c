@@ -18,7 +18,7 @@ UCS-2 encoding
 */
 
 #include "parrot/parrot.h"
-#include "../unicode.h"
+#include "unicode.h"
 #include "shared.h"
 
 /* HEADERIZER HFILE: none */
@@ -30,19 +30,19 @@ PARROT_INLINE
 static void ucs2_check_codepoint(PARROT_INTERP, UINTVAL c)
         __attribute__nonnull__(1);
 
-static size_t ucs2_hash(SHIM_INTERP,
+static size_t ucs2_hash(PARROT_INTERP,
     ARGIN(const STRING *src),
     size_t hashval)
         __attribute__nonnull__(2);
 
-static UINTVAL ucs2_iter_get(SHIM_INTERP,
+static UINTVAL ucs2_iter_get(PARROT_INTERP,
     ARGIN(const STRING *str),
     ARGIN(const String_iter *i),
     INTVAL offset)
         __attribute__nonnull__(2)
         __attribute__nonnull__(3);
 
-static UINTVAL ucs2_iter_get_and_advance(SHIM_INTERP,
+static UINTVAL ucs2_iter_get_and_advance(PARROT_INTERP,
     ARGIN(const STRING *str),
     ARGMOD(String_iter *i))
         __attribute__nonnull__(2)
@@ -59,8 +59,8 @@ static void ucs2_iter_set_and_advance(PARROT_INTERP,
         FUNC_MODIFIES(*str)
         FUNC_MODIFIES(*i);
 
-static void ucs2_iter_skip(SHIM_INTERP,
-    SHIM(const STRING *str),
+static void ucs2_iter_skip(PARROT_INTERP,
+    const STRING *str,
     ARGMOD(String_iter *i),
     INTVAL skip)
         __attribute__nonnull__(3)
@@ -70,10 +70,18 @@ static UINTVAL ucs2_ord(PARROT_INTERP, ARGIN(const STRING *src), INTVAL idx)
         __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
-PARROT_WARN_UNUSED_RESULT
-static UINTVAL ucs2_scan(PARROT_INTERP, ARGIN(const STRING *src))
+static INTVAL ucs2_partial_scan(PARROT_INTERP,
+    ARGIN(const char *buf),
+    ARGMOD(Parrot_String_Bounds *bounds))
         __attribute__nonnull__(1)
-        __attribute__nonnull__(2);
+        __attribute__nonnull__(2)
+        __attribute__nonnull__(3)
+        FUNC_MODIFIES(*bounds);
+
+static void ucs2_scan(PARROT_INTERP, ARGMOD(STRING *src))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*src);
 
 PARROT_WARN_UNUSED_RESULT
 PARROT_CANNOT_RETURN_NULL
@@ -100,6 +108,10 @@ static STRING * ucs2_to_encoding(PARROT_INTERP, ARGIN(const STRING *src))
 #define ASSERT_ARGS_ucs2_ord __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(src))
+#define ASSERT_ARGS_ucs2_partial_scan __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(buf) \
+    , PARROT_ASSERT_ARG(bounds))
 #define ASSERT_ARGS_ucs2_scan __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(src))
@@ -109,7 +121,7 @@ static STRING * ucs2_to_encoding(PARROT_INTERP, ARGIN(const STRING *src))
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 /* HEADERIZER END: static */
 
-#define UNIMPL Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNIMPLEMENTED, \
+#define UNIMPL Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_UNIMPLEMENTED, \
     "unimpl ucs2")
 
 /*
@@ -135,8 +147,8 @@ ucs2_to_encoding(PARROT_INTERP, ARGIN(const STRING *src))
 
     /* conversion to utf16 downgrades to ucs-2 if possible - check result */
     if (result->encoding == Parrot_utf16_encoding_ptr)
-        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_INVALID_ENCODING,
-            "Lossy conversion to UCS-2\n");
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_ENCODING,
+            "Lossy conversion to UCS-2");
 
     return result;
 }
@@ -160,13 +172,13 @@ ucs2_check_codepoint(PARROT_INTERP, UINTVAL c)
     if (UNICODE_IS_SURROGATE(c)
     || (c >= 0xFDD0 && c <= 0xFDEF)
     ||  c >= 0xFFFE)
-        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_INVALID_CHARACTER,
-                "Invalid character in UCS-2 string\n");
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_CHARACTER,
+                "Invalid character in UCS-2 string");
 }
 
 /*
 
-=item C<static UINTVAL ucs2_scan(PARROT_INTERP, const STRING *src)>
+=item C<static void ucs2_scan(PARROT_INTERP, STRING *src)>
 
 Returns the number of codepoints in string C<src>.
 
@@ -174,9 +186,8 @@ Returns the number of codepoints in string C<src>.
 
 */
 
-PARROT_WARN_UNUSED_RESULT
-static UINTVAL
-ucs2_scan(PARROT_INTERP, ARGIN(const STRING *src))
+static void
+ucs2_scan(PARROT_INTERP, ARGMOD(STRING *src))
 {
     ASSERT_ARGS(ucs2_scan)
     const utf16_t * const ptr = (utf16_t *)src->strstart;
@@ -184,15 +195,61 @@ ucs2_scan(PARROT_INTERP, ARGIN(const STRING *src))
     UINTVAL               i;
 
     if (src->bufused & 1)
-        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_INVALID_CHARACTER,
-            "Unaligned end in UCS-2 string\n");
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_CHARACTER,
+            "Unaligned end in UCS-2 string");
 
     for (i = 0; i < len; ++i) {
         ucs2_check_codepoint(interp, ptr[i]);
     }
 
-    return len;
+    src->strlen = len;
 }
+
+
+/*
+
+=item C<static INTVAL ucs2_partial_scan(PARROT_INTERP, const char *buf,
+Parrot_String_Bounds *bounds)>
+
+Partial scan of UCS-2 string
+
+=cut
+
+*/
+
+static INTVAL
+ucs2_partial_scan(PARROT_INTERP, ARGIN(const char *buf),
+        ARGMOD(Parrot_String_Bounds *bounds))
+{
+    ASSERT_ARGS(ucs2_partial_scan)
+    const utf16_t * const ptr   = (const utf16_t *)buf;
+    UINTVAL               len   = bounds->bytes >> 1;
+    const INTVAL          chars = bounds->chars;
+    const INTVAL          delim = bounds->delim;
+    INTVAL                c     = -1;
+    UINTVAL               i;
+
+    if (chars >= 0 && (UINTVAL)chars < len)
+        len = chars;
+
+    for (i = 0; i < len; ++i) {
+        c = ptr[i];
+
+        ucs2_check_codepoint(interp, c);
+
+        if (c == delim) {
+            len = i + 1;
+            break;
+        }
+    }
+
+    bounds->bytes = len << 1;
+    bounds->chars = len;
+    bounds->delim = c;
+
+    return 0;
+}
+
 
 /*
 
@@ -346,9 +403,10 @@ ucs2_hash(SHIM_INTERP, ARGIN(const STRING *src), size_t hashval)
 }
 
 static STR_VTABLE Parrot_ucs2_encoding = {
-    0,
+    -1,
     "ucs2",
     NULL,
+    2, /* Bytes per unit */
     2, /* Max bytes per codepoint */
 
     ucs2_to_encoding,
@@ -361,6 +419,7 @@ static STR_VTABLE Parrot_ucs2_encoding = {
     ucs2_hash,
 
     ucs2_scan,
+    ucs2_partial_scan,
     ucs2_ord,
     fixed_substr,
 
@@ -375,6 +434,7 @@ static STR_VTABLE Parrot_ucs2_encoding = {
     unicode_upcase,
     unicode_downcase,
     unicode_titlecase,
+    unicode_foldcase,
     unicode_upcase_first,
     unicode_downcase_first,
     unicode_titlecase_first,

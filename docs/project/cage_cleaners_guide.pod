@@ -1,16 +1,22 @@
-# Copyright (C) 2007, Parrot Foundation.
+# Copyright (C) 2007-2012, Parrot Foundation.
 
-=head1 Cage Cleaner Guide
+=pod
+
+=head1 NAME
+
+docs/project/cage_cleaners_guide.pod - Cage Cleaner Guide.
+
+=head1 DESCRIPTION
 
 From F<docs/project/roles_responsibilities.pod>:
 
- Fixes failing tests, makes sure coding standards are implemented,
- reviews documentation and examples. A class of tickets in the
- tracking system (Trac) has been created for use by this
- group. This is an entry level position, and viewed as a good way
- to get familiar with parrot internals.
+  Fixes failing tests, makes sure coding standards are implemented,
+  reviews documentation and examples. A class of tickets in the
+  tracking system (Trac) has been created for use by this
+  group. This is an entry level position, and viewed as a good way
+  to get familiar with parrot internals.
 
-=head1 Testing Parrot after making a code cleaning change
+=head1 TESTING PARROT AFTER MAKING A CODE CLEANING CHANGE
 
 To be really I<really> sure you're not breaking anything after doing code
 cleaning or attending to the newspaper at the bottom of our Parrot's cage
@@ -29,7 +35,7 @@ maintain reasonably up to date references for the diffs.
 
 This process should be put into a script and stored somewhere...
 
-=head1 Parrot Cage Cleaners high-level goals
+=head1 PARROT CAGE CLEANERS' HIGH-LEVEL GOALS
 
 =head2 Smoke testing on many platforms with many compilers
 
@@ -56,8 +62,41 @@ Use as many compiler warnings as we possibly can.  The more warnings
 we enable, the less likely something will pass the watchful eye of
 the compiler.
 
-Note that warnings may not just be -W flags.  Some warnings in gcc
-only show up when optimization is enabled.
+Note that warnings may not just be -W flags.  Some warnings in gcc only show
+up when optimization is enabled.  Use the C<--cage> option to
+C<Configure.pl> to enable extra warnings which are useful in keeping the
+cage clean.
+
+=head3 gcc fortify source macro
+
+In gcc it is possible to use the C<-D_FORTIFY_SOURCE=x> macro to provide "a
+lightweight buffer overflow protection to some memory and string functions"
+(C<http://gcc.gnu.org/ml/gcc-patches/2004-09/msg02055.html>).  Checks are
+implemented at compile- and run-time, thus it is also a good idea to run the
+test suite in combination with this compiler option.  There are two levels
+to this macro usage:
+
+=over 4
+
+=item C<-D_FORTIFY_SOURCE=1>
+
+This option is only available in combination with at least the C<-O1>
+optimisation option and performs security checks that shouldn't change the
+behaviour of conforming programs.  Add this option to the C<--ccflags>
+configure option to enable it, e.g.:
+
+  perl Configure.pl --ccflags="-D_FORTIFY_SOURCE=1 -O1"
+
+=item C<-D_FORTIFY_SOURCE=2>
+
+This option is only available in combination with at least the C<-O2>
+optimisation option and performs more checking which might cause conforming
+programs to fail.  It can be added to the C<--ccflags> configure option and
+used in combination with the C<--optimize> configure option like so:
+
+  perl Configure.pl --optimize --ccflags="-D_FORTIFY_SOURCE=2"
+
+=back
 
 =head2 splint
 
@@ -292,6 +331,10 @@ To run parrot under Valgrind, the following argument set should be helpful:
 
 (adapted from a post to C<parrot-porters> by chromatic).
 
+See also the F<tools/dev/vgp> and F<tools/dev/parrot.supp> files. C<vgp>
+is a wrapper around running parrot with valgrind and uses a custom set
+of "valgrind suppressions".
+
 =head2 IMCC cleanup
 
 From #parrot:
@@ -313,9 +356,10 @@ L<http://www.oreillynet.com/onlamp/blog/2006/07/calling_for_parrot_janitors.html
 
 =head2 Remove usage of deprecated features
 
-F<DEPRECATED.pod> lists features that are deprecated but not yet removed;
-A Trac ticket will document how this deprecated feature is to be replaced.
-Help prepare for the actual removal of the feature by replacing its usage.
+The F<api.yaml> file lists features that are deprecated but not yet
+removed, as well as experimental features.  A Trac ticket will document how
+this deprecated feature is to be replaced.  Help prepare for the actual removal
+of the feature by replacing its usage.
 
 =head2 Clean up skipped tests
 
@@ -330,7 +374,7 @@ If you can make it run, great!  Make it a TODO test instead.
 
 If neither, please report your findings so that everyone can decide what to do.
 
-=head1 Handy configuration tips
+=head1 HANDY CONFIGURATION TIPS
 
 =head2 Displaying trailing whitespace in vim and emacs
 
@@ -366,6 +410,6 @@ Paul Cochrane a.k.a. ptc; original document by Andy Lester
 =head1 SEE ALSO
 
 F<docs/project/roles_responsibilities.pod>, F<RESPONSIBLE_PARTIES>
-and the list of Cage items in Trac L<http://trac.parrot.org>.
+and the list of Cage items in github L<https://github.com/parrot/parrot/issues?labels=cage&state=open>.
 
 =cut

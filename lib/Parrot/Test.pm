@@ -1,4 +1,4 @@
-# Copyright (C) 2004-2009, Parrot Foundation.
+# Copyright (C) 2004-2017, Parrot Foundation.
 
 =head1 NAME
 
@@ -23,79 +23,99 @@ Write individual tests like this:
 
 This module provides various Parrot-specific test functions.
 
-=head2 Functions
+=head2 Function Parameters
 
-The parameter C<$language> is the language of the code.
-The parameter C<$code> is the code that should be executed or transformed.
-The parameter C<$expected> is the expected result.
-The parameter C<$unexpected> is the unexpected result.
-The parameter C<$description> should describe the test.
+=over 4
 
-Any optional parameters can follow.  For example, to mark a test as a TODO test
-(where you know the implementation does not yet work), pass:
+=item C<$language>
+
+The language of the code being tested.
+
+=item C<$code>
+
+The code that should be executed or transformed.
+
+=item C<$expected>
+
+The expected result.
+
+=item C<$unexpected>
+
+The unexpected result.
+
+=item C<$description>
+
+A short description of the test.
+
+=back
+
+Any optional parameters can follow. For example, to mark a test as a TODO test
+(where you know the implementation does not work yet), pass:
 
     todo => 'reason to consider this TODO'
 
-at the end of the argument list.  Valid reasons include C<bug>,
+at the end of the argument list. Valid reasons include C<bug>,
 C<unimplemented>, and so on.
 
 B<Note:> you I<must> use a C<$description> with TODO tests.
 
+=head2 Functions
+
 =over 4
 
-=item C<language_output_is( $language, $code, $expected, $description)>
+=item C<language_output_is($language, $code, $expected, $description)>
 
-=item C<language_error_output_is( $language, $code, $expected, $description)>
+=item C<language_error_output_is($language, $code, $expected, $description)>
 
 Runs a language test and passes the test if a string comparison
-of the output with the expected result it true.
-For C<language_error_output_is()> the exit code also has to be non-zero.
+of the output with the expected result is true. For
+C<language_error_output_is()>, the exit code also has to be non-zero.
 
-=item C<language_output_like( $language, $code, $expected, $description)>
+=item C<language_output_like($language, $code, $expected, $description)>
 
-=item C<language_error_output_like( $language, $code, $expected, $description)>
+=item C<language_error_output_like($language, $code, $expected, $description)>
 
 Runs a language test and passes the test if the output matches the expected
-result.
-For C<language_error_output_like()> the exit code also has to be non-zero.
+result. For C<language_error_output_like()>, the exit code also has to be
+non-zero.
 
-=item C<language_output_isnt( $language, $code, $expected, $description)>
+=item C<language_output_isnt($language, $code, $expected, $description)>
 
-=item C<language_error_output_isnt( $language, $code, $expected, $description)>
+=item C<language_error_output_isnt($language, $code, $expected, $description)>
 
 Runs a language test and passes the test if a string comparison
-if a string comparison of the output with the unexpected result is false.
-For C<language_error_output_isnt()> the exit code also has to be non-zero.
+of the output with the unexpected result is false. For
+C<language_error_output_isnt()>, the exit code also has to be non-zero.
 
 =item C<pasm_output_is($code, $expected, $description)>
 
-Runs the Parrot Assembler code and passes the test if a string comparison of
-the output with the expected result it true.
+Runs the PASM code and passes the test if a string comparison of
+the output with the expected result is true.
 
 =item C<pasm_error_output_is($code, $expected, $description)>
 
-Runs the Parrot Assembler code and passes the test if a string comparison of
-the output with the expected result it true I<and> if Parrot exits with a
+Runs the PASM code and passes the test if a string comparison of
+the output with the expected result is true I<and> if Parrot exits with a
 non-zero exit code.
 
 =item C<pasm_output_like($code, $expected, $description)>
 
-Runs the Parrot Assembler code and passes the test if the output matches
+Runs the PASM code and passes the test if the output matches
 C<$expected>.
 
 =item C<pasm_error_output_like($code, $expected, $description)>
 
-Runs the Parrot Assembler code and passes the test if the output matches
+Runs the PASM code and passes the test if the output matches
 C<$expected> I<and> if Parrot exits with a non-zero exit code.
 
 =item C<pasm_output_isnt($code, $unexpected, $description)>
 
-Runs the Parrot Assembler code and passes the test if a string comparison of
+Runs the PASM code and passes the test if a string comparison of
 the output with the unexpected result is false.
 
 =item C<pasm_error_output_isnt($code, $unexpected, $description)>
 
-Runs the Parrot Assembler code and passes the test if a string comparison of
+Runs the PASM code and passes the test if a string comparison of
 the output with the unexpected result is false I<and> if Parrot exits with a
 non-zero exit code.
 
@@ -106,21 +126,23 @@ fails the test otherwise.
 
 =item C<pir_output_is($code, $expected, $description)>
 
-Runs the PIR code and passes the test if a string comparison of output with the
-expected result is true.
+Runs the PIR code and passes the test if a string comparison of the output
+with the expected result is true.
 
 =item C<pir_error_output_is($code, $expected, $description)>
 
-Runs the PIR code and passes the test if a string comparison of output with the
-expected result is true I<and> if Parrot exits with a non-zero exit code.
+Runs the PIR code and passes the test if a string comparison of the output
+with the expected result is true I<and> if Parrot exits with a non-zero exit
+code.
 
 =item C<pir_output_like($code, $expected, $description)>
 
-Runs the PIR code and passes the test if output matches the expected result.
+Runs the PIR code and passes the test if the output matches the expected
+result.
 
 =item C<pir_error_output_like($code, $expected, $description)>
 
-Runs the PIR code and passes the test if output matches the expected result
+Runs the PIR code and passes the test if the output matches the expected result
 I<and> if Parrot exits with a non-zero exit code.
 
 =item C<pir_output_isnt($code, $unexpected, $description)>
@@ -141,81 +163,67 @@ fails the test otherwise.
 
 =item C<pbc_output_is($code, $expected, $description)>
 
-Runs the Parrot Bytecode and passes the test if a string comparison of output
-with the expected result is true.
+Runs the Parrot bytecode and passes the test if a string comparison of the
+output with the expected result is true.
 
 =item C<pbc_error_output_is($code, $expected, $description)>
 
-Runs the Parrot Bytecode and passes the test if a string comparison of the output
-with the expected result is true I<and> if Parrot exits with a non-zero exit code.
+Runs the Parrot bytecode and passes the test if a string comparison of the
+output with the expected result is true I<and> if Parrot exits with a non-zero
+exit code.
 
 =item C<pbc_output_like($code, $expected, $description)>
 
-Runs the Parrot Bytecode and passes the test if output matches the expected
+Runs the Parrot bytecode and passes the test if the output matches the expected
 result.
 
 =item C<pbc_error_output_like($code, $expected, $description)>
 
-Runs the Parrot Bytecode and passes the test if output matches the expected
+Runs the Parrot bytecode and passes the test if the output matches the expected
 result I<and> if Parrot exits with a non-zero exit code.
 
 =item C<pbc_output_isnt($code, $unexpected, $description)>
 
-Runs the Parrot Bytecode and passes the test if a string comparison of output
-with the unexpected result is false.
+Runs the Parrot bytecode and passes the test if a string comparison of the
+output with the unexpected result is false.
 
 =item C<pbc_error_output_isnt($code, $unexpected, $description)>
 
-Runs the Parrot Bytecode and passes the test if a string comparison of output
-with the unexpected result is false I<and> if Parrot exits with a non-zero exit
-code.
+Runs the Parrot bytecode and passes the test if a string comparison of the
+output with the unexpected result is false I<and> if Parrot exits with a
+non-zero exit code.
 
 =item C<pbc_exit_code_is($code, $exit_code, $description)>
 
-Runs the Parrot Bytecode and passes the test if the exit code equals $exit_code,
+Runs the Parrot bytecode and passes the test if the exit code equals $exit_code,
 fails the test otherwise.
-
-=item C<pir_2_pasm_is($code, $expected, $description)>
-
-Compile the Parrot Intermediate Representation and generate Parrot Assembler Code.
-Pass if the generated PASM is $expected.
-
-=item C<pir_2_pasm_like($code, $expected, $description)>
-
-Compile the Parrot Intermediate Representation and generate Parrot Assembler Code.
-Pass if the generated PASM matches $expected.
-
-=item C<pir_2_pasm_isnt($code, $unexpected, $description)>
-
-Compile the Parrot Intermediate Representation and generate Parrot Assembler
-Code.  Pass unless the generated PASM is $expected.
 
 =item C<c_output_is($code, $expected, $description, %options)>
 
-Compiles and runs the C code, passing the test if a string comparison of output
-with the expected result it true.  Valid options are 'todo' => 'reason' to mark
-a TODO test.
+Compiles and runs the C code, passing the test if a string comparison of the
+output with the expected result is true. Valid options are 'todo' => 'reason'
+to mark a TODO test.
 
 =item C<c_output_like($code, $expected, $description, %options)>
 
-Compiles and runs the C code, passing the test if output matches the expected
-result.  Valid options are 'todo' => 'reason' to mark a TODO test.
+Compiles and runs the C code, passing the test if the output matches the
+expected result. Valid options are 'todo' => 'reason' to mark a TODO test.
 
 =item C<c_output_isnt($code, $unexpected, $description, %options)>
 
-Compiles and runs the C code, passing the test if a string comparison of output
-with the unexpected result is false.  Valid options are 'todo' => 'reason' to
-mark a TODO test.
+Compiles and runs the C code, passing the test if a string comparison of the
+output with the unexpected result is false. Valid options are
+'todo' => 'reason' to mark a TODO test.
 
-=item C<example_output_is( $example_f, $expected, @todo )>
+=item C<example_output_is($example_f, $expected, @todo)>
 
-=item C<example_output_like( $example_f, $expected, @todo )>
+=item C<example_output_like($example_f, $expected, @todo)>
 
-=item C<example_output_isnt( $example_f, $expected, @todo )>
+=item C<example_output_isnt($example_f, $expected, @todo)>
 
 Determines the language, PIR or PASM, from the extension of C<$example_f> and runs
-the appropriate C<^language_output_(is|like|isnt)> sub.
-C<$example_f> is used as a description, so don't pass one.
+the appropriate C<language_output_(is|like|isnt)> subroutine. C<$example_f> is
+used as a description, so don't pass one.
 
 =item C<skip($why, $how_many)>
 
@@ -239,32 +247,30 @@ For example:
 
 =item C<slurp_file($file_name)>
 
-Read the whole file $file_name and return the content as a string.  This is
+Read the whole file $file_name and return the content as a string. This is
 just an alias for C<Parrot::BuildUtil::slurp_file>.
 
 =item C<convert_line_endings($text)>
 
-Convert Win32 style line endins with Unix style line endings.
+Convert Win32 style line endings with Unix style line endings.
 
 =item C<path_to_parrot()>
 
-Construct an absolute path to the parrot root dir.
+Construct an absolute path to the Parrot root directory.
 
-=item C<per_test( $ext, $test_no )>
+=item C<per_test($ext, $test_no)>
 
-Construct a path for a temporary files.
-Takes C<$0> into account.
+Construct a path for temporary files. Takes C<$0> into account.
 
 =item C<write_code_to_file($code, $code_f)>
 
 Writes C<$code> into the file C<$code_f>.
 
-=item C<generate_languages_functions>
+=item C<generate_languages_functions()>
 
-Generate functions that are only used by a couple of
-Parrot::Test::<lang> modules.
-This implementation is experimental and currently only works
-for languages/pipp.
+Generate functions that are only used by a couple of Parrot::Test::<lang>
+modules. This implementation is experimental and currently only works for
+languages/pipp.
 
 =back
 
@@ -284,12 +290,14 @@ use IO::File ();
 use lib qw( lib );
 use Parrot::BuildUtil ();
 use Parrot::Config;
+use Parrot::Test::Util 'create_tempfile';
 
 require Exporter;
 require Test::Builder;
 require Test::More;
 
-our @EXPORT = qw( plan run_command skip slurp_file pbc_postprocess_output_like );
+our @EXPORT = qw( plan run_command skip slurp_file pbc_postprocess_output_like
+                  pir_stdin_output_is pir_stdin_output_like );
 
 use base qw( Exporter );
 
@@ -306,9 +314,9 @@ my $builder = Test::Builder->new();
 _generate_test_functions();
 
 sub import {
-    my ( $class, $plan, @args ) = @_;
+    my ( $class, $plan, $num ) = @_;
 
-    $builder->plan( $plan, @args );
+    $builder->plan( $plan, $num );
 
     __PACKAGE__->export_to_level( 2, __PACKAGE__ );
 }
@@ -417,11 +425,14 @@ sub convert_line_endings {
     return;
 }
 
+# Works only if not installed.
+# Using $PConfig{build_dir} would be much better
 sub path_to_parrot {
 
-    my $path = $INC{'Parrot/Config.pm'};
-    $path =~ s{ /lib/Parrot/Config.pm \z}{}xms;
-
+    my $path = __FILE__; # lib/Parrot/Test.pm
+    $path =~ s{\Qlib/Parrot/Test.pm\E$}{};
+    $path =~ s{/$}{};
+    $path = "." unless $path;
     return Cwd::realpath( $path );
 }
 
@@ -572,7 +583,92 @@ sub pbc_postprocess_output_like {
 
 }
 
-# The following methods are private.  They should not be used by modules
+sub _pir_stdin_output_slurp {
+    my ($input_string, $code) = @_;
+
+    my $stuff = sub {
+        # Put the string on a file.
+        my $string = shift;
+
+        my (undef, $file) = create_tempfile(UNLINK => 1);
+        open(my $out, '>', $file)
+            or die "Unable to open tempfile for writing: $!";
+        binmode $out;
+        print $out $string;
+        return $file;
+    };
+
+    # Write the input and code strings.
+    my $input_file = $stuff->($input_string);
+    my $code_file = $stuff->($code);
+
+    my $parrot = ".$PConfig{slash}parrot$PConfig{exe}";
+    # Slurp and compare the output.
+    my $result = do {
+        local $/;
+        open(my $in, '-|', "$parrot $code_file 2>&1 < $input_file")
+            or die "Unable to pipe output to us: $!";
+        <$in>;
+    };
+    $result = valgrind_filter(undef, $result) if $ENV{VALGRIND};
+    return $result;
+}
+
+=over
+
+=item C<pir_stdin_output_is($input_string, $code, $expected, $description)>
+
+Runs the PIR code while piping data into its standard input and passes the test
+if a string comparison of output with the expected result is true.
+
+=cut
+
+sub pir_stdin_output_is {
+    my ($input_string, $code, $expected_output, $description) = @_;
+
+    my $result = _pir_stdin_output_slurp($input_string, $code, $expected_output);
+    Test::More::is($result, $expected_output, $description);
+}
+
+=item C<pir_stdin_output_like($input_string, $code, $expected, $description)>
+
+Runs the PIR code while piping data into its standard input and passes the test
+if the output matches the expected result.
+
+=cut
+
+sub pir_stdin_output_like {
+    my ($input_string, $code, $expected_output, $description) = @_;
+
+    my $result = _pir_stdin_output_slurp($input_string, $code, $expected_output);
+    Test::More::like($result, $expected_output, $description);
+}
+
+=item C<valgrind_filter($builder, $result)>
+
+Filters valgrind stderr output from the result string.
+
+=back
+
+=cut
+
+sub valgrind_filter {
+    my ($builder, $output) = @_;
+    if ($output =~ /^(?:==|--)\d+(?:==|--)\s+definitely lost: (\d+) bytes in (\d+) blocks\n/m) {
+        if ($1) {
+            my $msg = "LEAK SUMMARY: definitely lost: $1 bytes in $2 blocks";
+            $builder ? $builder->diag($msg) : Test::More::diag($msg);
+        }
+    }
+    $output =~ s/(^(?:==|--)\d+(?:==|--).*\n)//mg;
+    # --pid:0:syswrap- WARNING: Ignoring sigreturn( ..., UC_RESET_ALT_STACK );
+    # on longjmp, darwin only.
+    $output =~ s/(^--(?:\d)+:0:syswrap-.*\n)//mg
+      if $^O eq 'darwin' and !$ENV{TEST_VERBOSE};
+    $output;
+}
+
+# The following methods are private. They should not be used by modules
 # inheriting from Parrot::Test.
 
 sub _handle_error_output {
@@ -603,6 +699,9 @@ sub _run_test_file {
     # Switch to a different extension when we are generating code.
     my $out_f = per_test( '.out', $test_no );
 
+    # honor opt* filename to actually run code with -Ox
+    my $args = $ENV{TEST_PROG_ARGS} || '';
+
     # Name of the file with test code.
     # This depends on which kind of code we are testing.
     my $code_f;
@@ -611,9 +710,11 @@ sub _run_test_file {
     }
     elsif ( $func =~ m/^pasm_(exit_code|.*?output_)/ ) {
         $code_f = per_test( '.pasm', $test_no );
+        $args .= " -a";
     }
     elsif ( $func =~ m/^pbc_(exit_code|.*?output_)/ ) {
         $code_f = per_test( '.pbc', $test_no );
+        $code_f = $code if $code =~ /\.pbc$/ and -f $code;
     }
     else {
         die "Unknown test function: $func";
@@ -621,13 +722,11 @@ sub _run_test_file {
     $code_f = File::Spec->rel2abs($code_f);
     my $code_basef = basename($code_f);
 
-    # native tests are just run, others need to write code first
-    if ( $code_f !~ /\.pbc$/ ) {
+    # existing pbc test files are just run, need to write code first
+    if ( $code_f !~ /\.pbc$/ or ! -f $code_f ) {
         write_code_to_file( $code, $code_f );
     }
 
-    # honor opt* filename to actually run code with -Ox
-    my $args = $ENV{TEST_PROG_ARGS} || '';
     my $opt = $code_basef =~ m!opt(.)! ? "-O$1" : "";
     $args .= " $opt";
 
@@ -706,7 +805,7 @@ sub _generate_test_functions {
                             'parrot' . $PConfig{exe} );
 
     ##### 1: Parrot test map #####
-    my %parrot_test_map = map {
+    my @parrot_test_map = map {
         $_ . '_output_is'           => 'is_eq',
         $_ . '_error_output_is'     => 'is_eq',
         $_ . '_exit_code_is'        => 'is_eq',
@@ -717,6 +816,7 @@ sub _generate_test_functions {
         $_ . '_output_unlike'       => 'unlike',
         $_ . '_error_output_unlike' => 'unlike',
     } qw( pasm pbc pir );
+    my %parrot_test_map = @parrot_test_map;
     for my $func ( keys %parrot_test_map ) {
         push @EXPORT, $func;
 
@@ -725,11 +825,7 @@ sub _generate_test_functions {
             my ( $code, $expected, $desc, %extra ) = @_;
             my $args                               = $ENV{TEST_PROG_ARGS} || '';
 
-            # Due to ongoing changes in PBC format, all tests in
-            # t/native_pbc/*.t are currently being SKIPped.  This means we
-            # have no tests on which to model tests of the following block.
-            # Hence, test coverage will be lacking.
-            if ( $func =~ /^pbc_output_/ && $args =~ /-r / ) {
+            if ( $code =~ m|t/native_pbc/| && $func =~ /^pbc_output_/ && $args =~ /-r / ) {
                 # native tests with --run-pbc don't make sense
                 return $builder->skip("no native tests with -r");
             }
@@ -738,7 +834,8 @@ sub _generate_test_functions {
 
             my $meth        = $parrot_test_map{$func};
             my $real_output = slurp_file($out_f);
-
+            my $ori_output  = $real_output;
+            $real_output = valgrind_filter($builder, $real_output) if $ENV{VALGRIND};
             _unlink_or_retain( $out_f );
 
             # set a todo-item for Test::Builder to find
@@ -751,12 +848,17 @@ sub _generate_test_functions {
 
             if ( $func =~ /_exit_code_is$/ ) {
                 $expected = int($expected);
+                if ($exit_code and $exit_code =~ /\[SIGNAL (\d+)\]/) {
+                    $exit_code = $1;
+                }
                 if ($exit_code == $expected) {
                     my $pass = $builder->$meth( $exit_code, $expected, $desc );
                     return $pass;
                 }
                 else {
-                    $builder->ok(0);
+                    $builder->ok(0, $desc);
+                    $builder->diag( "$cmd\nExited with error code: $exit_code, expected: $expected\n" );
+                    $builder->diag( "STDOUT:\n$real_output\n" ) if $ENV{TEST_VERBOSE};
                     return 0;
                 }
             }
@@ -767,10 +869,12 @@ sub _generate_test_functions {
             }
             elsif ($exit_code) {
                 $builder->ok( 0, $desc );
-                $builder->diag( "Exited with error code: $exit_code\n"
-                        . "Received:\n$real_output\nExpected:\n$expected\n" );
+                $builder->diag( "$cmd\nExited with error code: $exit_code\n"
+                        . "Received:\n$real_output\nExpected:\n$expected\n"
+                        . $ori_output ne $real_output ? "$ori_output\n" : "");
                 return 0;
             }
+            $cmd = join"\n",@$cmd if ref $cmd eq 'ARRAY';
             my $pass = $builder->$meth( $real_output, $expected, $desc );
             $builder->diag("'$cmd' failed with exit code $exit_code")
                 if not $pass and $exit_code;
@@ -780,92 +884,7 @@ sub _generate_test_functions {
         create_sub($package, $func, $test_sub);
     }
 
-    ##### 2: PIR-to-PASM test map #####
-    my %pir_2_pasm_test_map = (
-        pir_2_pasm_is      => 'is_eq',
-        pir_2_pasm_isnt    => 'isnt_eq',
-        pir_2_pasm_like    => 'like',
-        pir_2_pasm_unlike  => 'unlike',
-    );
-
-    foreach my $func ( keys %pir_2_pasm_test_map ) {
-        push @EXPORT, $func;
-        no strict 'refs';
-
-        my $test_sub = sub {
-            local *__ANON__                        = $func;
-            my ( $code, $expected, $desc, %extra ) = @_;
-
-            # Strange Win line endings
-            convert_line_endings($expected);
-
-            # set up default description
-            unless ($desc) {
-                ( undef, my $file, my $line ) = caller();
-                $desc = "($file line $line)";
-            }
-
-            # $test_no will be part of temporary file
-            my $test_no = $builder->current_test() + 1;
-
-            # Name of the file with test code.
-            my $code_f = File::Spec->rel2abs( per_test( '.pir', $test_no ) );
-            my $code_basef = basename($code_f);
-
-            # output file
-            my $out_f = per_test( '.pasm', $test_no );
-
-            my $cmd;
-
-            if ($func =~ /^pir_/) {
-                my $opt  = $code_basef =~ m!opt(.)! ? "-O$1" : "-O1";
-                my $args = $ENV{TEST_PROG_ARGS} || '';
-                $args   .= " $opt --output=$out_f";
-                $args    =~ s/--run-exec//;
-                $cmd       = qq{$parrot $args "$code_f"};
-            }
-
-            write_code_to_file( $code, $code_f );
-
-            my $exit_code = run_command(
-                $cmd,
-                CD     => $path_to_parrot,
-                STDOUT => $out_f,
-                STDERR => $out_f
-            );
-
-            my $meth        = $pir_2_pasm_test_map{$func};
-            my $real_output = slurp_file($out_f);
-            {
-
-                # The parrot open '--outfile=file.pasm' seems to create unnecessary whitespace
-                $real_output =~ s/^\s*$//gm;
-                $real_output =~ s/[\t ]+/ /gm;
-                $real_output =~ s/ +$//gm;
-
-                $expected =~ s/[\t ]+/ /gm;
-            }
-
-            # set a todo-item for Test::Builder to find
-            my $call_pkg = $builder->exported_to() || '';
-
-            local *{ $call_pkg . '::TODO' } = ## no critic Variables::ProhibitConditionalDeclarations
-                \$extra{todo}
-                if defined $extra{todo};
-
-            my $pass = $builder->$meth( $real_output, $expected, $desc );
-            $builder->diag("'$cmd' failed with exit code $exit_code")
-                if $exit_code and not $pass;
-
-            _unlink_or_retain( $out_f );
-
-            return $pass;
-        };
-
-        create_sub($package, $func, $test_sub);
-    }
-
-    ##### 3: Language test map #####
+    ##### 2: Language test map #####
     my %builtin_language_prefix = (
         PIR_IMCC  => 'pir',
         PASM_IMCC => 'pasm',
@@ -929,7 +948,7 @@ sub _generate_test_functions {
         create_sub($package, $func, $test_sub);
     }
 
-    ##### 4:  Example test map #####
+    ##### 3:  Example test map #####
     my %example_test_map = (
         example_output_is   => 'language_output_is',
         example_output_like => 'language_output_like',
@@ -974,7 +993,7 @@ sub _generate_test_functions {
         create_sub($package, $func, $test_sub);
     }
 
-    ##### 5: C test map #####
+    ##### 4: C test map #####
     my %c_test_map = (
         c_output_is     => 'is_eq',
         c_output_isnt   => 'isnt_eq',
@@ -991,6 +1010,7 @@ sub _generate_test_functions {
 
             # $test_no will be part of temporary files
             my $test_no = $builder->current_test() + 1;
+            my $verbose = $ENV{TEST_VERBOSE} ? $ENV{TEST_VERBOSE} : 0;
 
             convert_line_endings($expected);
 
@@ -1012,7 +1032,7 @@ sub _generate_test_functions {
                 my $cmd =
                       "$PConfig{cc} $PConfig{ccflags} $PConfig{cc_debug} "
                     . ($^O =~ m/MSWin32/ and $PConfig{cc} eq 'cl' ? "-DPARROT_IN_EXTENSION" : "")
-                    . " -I./include -c "
+                    . ($^O eq 'VMS' ? "" : " -I./include -c ")
                     . "$PConfig{cc_o_out}$obj_f $source_f";
                 my $exit_code = run_command(
                     $cmd,
@@ -1021,6 +1041,7 @@ sub _generate_test_functions {
                 );
                 $builder->diag("'$cmd' failed with exit code $exit_code")
                     if $exit_code;
+                $builder->diag( $cmd."\n" ) if $verbose > 1;
 
                 if ( !-e $obj_f ) {
                     $builder->diag( "Failed to build '$obj_f': " . slurp_file($build_f) );
@@ -1053,6 +1074,7 @@ sub _generate_test_functions {
                 );
                 $builder->diag("'$cmd' failed with exit code $exit_code")
                     if $exit_code;
+                $builder->diag( $cmd."\n" ) if $verbose > 1;
 
                 if ( !-e $exe_f ) {
                     $builder->diag( "Failed to build '$exe_f': " . slurp_file($build_f) );
@@ -1073,16 +1095,19 @@ sub _generate_test_functions {
                     'STDERR' => $out_f
                 );
                 my $output = slurp_file($out_f);
-
+                my $ori_output = $output;
+                $output = valgrind_filter($builder, $output) if $ENV{VALGRIND};
                 if ($exit_code) {
                     $pass = $builder->ok( 0, $desc );
                     $builder->diag( "Exited with error code: $exit_code\n"
-                            . "Received:\n$output\nExpected:\n$expected\n" );
+                            . "Received:\n$output\nExpected:\n$expected\n"
+                            . $ori_output ne $output ? "$ori_output\n" : "");
                 }
                 else {
                     my $meth = $c_test_map{$func};
                     $pass = $builder->$meth( $output, $expected, $desc );
-                    $builder->diag("'$cmd' failed with exit code $exit_code")
+                    $builder->diag("'$cmd' failed with exit code $exit_code.\n"
+                                   . $ori_output ne $output ? "$ori_output\n" : "")
                         unless $pass;
                 }
             }
@@ -1132,6 +1157,14 @@ sub _handle_blib_path {
     }
     elsif ($^O eq 'MSWin32') {
         $ENV{PATH} = $blib_path . ';' . $ENV{PATH};
+    }
+    elsif ($^O eq 'darwin') {
+        if (!$ENV{DYLD_LIBRARY_PATH}) {
+            $ENV{DYLD_LIBRARY_PATH} = $blib_path;
+        }
+        elsif ($ENV{DYLD_LIBRARY_PATH} !~ m|$blib_path|) {
+            $ENV{DYLD_LIBRARY_PATH} = "$blib_path:$ENV{DYLD_LIBRARY_PATH}";
+        }
     }
     else {
         $ENV{LD_RUN_PATH} = $blib_path;

@@ -8,7 +8,7 @@ use Cwd;
 use File::Temp qw( tempdir );
 use Test::More;
 plan( skip_all => 'only needs testing on Darwin' ) unless $^O =~ /darwin/i;
-plan( tests =>  36 );
+plan( tests =>  37 );
 
 use lib qw( lib t/configure/testlib );
 use_ok('config::init::hints');
@@ -18,7 +18,7 @@ use Parrot::Configure::Step::Test;
 use Parrot::Configure::Test qw(
     test_step_constructor_and_description
 );
-use IO::CaptureOutput qw | capture |;
+use Parrot::Configure::Utils qw | capture |;
 
 my $cwd = cwd();
 my ($args, $step_list_ref) = process_options(
@@ -233,9 +233,11 @@ my $stored = $conf->data->get($problematic_flag);
     no warnings 'once';
     local $init::hints::darwin::defaults{sw_vers} = qq{$predicted.11};
     use warnings;
-    init::hints::darwin::_set_deployment_environment();
+    my $deploy_target = init::hints::darwin::_set_deployment_environment();
     is($ENV{'MACOSX_DEPLOYMENT_TARGET'}, $predicted,
         "_set_deployment_environment(): MACOSX_DEPLOYMENT_TARGET set as expected");
+    is($deploy_target, '10.99',
+        "Got expected return value for _set_deployment_environment");
 }
 
 ##### _probe_for_fink() #####
@@ -255,7 +257,7 @@ my $stored = $conf->data->get($problematic_flag);
             \$stdout,
             \$stderr,
         );
-        like( $stdout, qr/Fink configuration file not located/,
+        like( $stdout, qr/Fink configuration file.*not located/,
             "Got expected verbose output when Fink config not located" );
     }
     $conf->options->set( 'verbose' => 0 );

@@ -36,7 +36,7 @@ sub runstep {
     my $hints_file;
 
     my $osname = lc( $conf->data->get('OSNAME_provisional') );
-    $osname = 'linux' if ($osname eq 'gnukfreebsd');
+    $osname = 'linux' if $osname =~ m/^gnu(kfreebsd)?$/;
 
     my $hints_file_name = $conf->options->get('hintsfile') || $osname ;
     $hints_file = catfile('config', 'init', 'hints', "$hints_file_name.pm");
@@ -62,6 +62,9 @@ sub runstep {
             $hints_pkg->runstep( $conf, @_ ) if $hints_pkg->can('runstep');
             $hints_used++;
         }
+    }
+    elsif ( $conf->options->get('hintsfile') ) {
+        die "No $hints_file found";
     }
     else {
         $conf->debug("No $hints_file found.  ");

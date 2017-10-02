@@ -1,6 +1,6 @@
 #! perl
 ################################################################################
-# Copyright (C) 2001-2009, Parrot Foundation.
+# Copyright (C) 2001-2013, Parrot Foundation.
 ################################################################################
 
 =head1 TITLE
@@ -43,6 +43,14 @@ The library directory. Defaults to '/usr/lib'.
 
 The header directory. Defaults to '/usr/include'.
 
+=item C<datadir>
+
+The data directory. Defaults to '/usr/share'.
+
+=item C<srcdir>
+
+The src directory. Defaults to '/usr/src'.
+
 =back
 
 =head1 SEE ALSO
@@ -79,7 +87,7 @@ my %options = (
     srcdir      => '/usr/src/',      # parrot/ subdir added below
     versiondir  => '',
     'dry-run'   => 0,
-    packages    => 'devel|pct|tge|nqp|data_json',
+    packages    => 'devel|pct|tge|nqp|data_json|winxed',
 );
 
 my @manifests;
@@ -93,9 +101,10 @@ foreach (@ARGV) {
 }
 
 my $parrotdir = $options{versiondir};
+Parrot::Install::sanitycheck_install(); # GH #910
 
 # Set up transforms on filenames
-my(@transformorder) = (qw(lib share include src doc), '^(tools|VERSION)', '^compilers');
+my(@transformorder) = (qw(lib share include bin src doc), '^(tools|VERSION)', '^compilers');
 my(%metatransforms) = (
     lib => {
         ismeta => 1,
@@ -126,6 +135,18 @@ my(%metatransforms) = (
             $filehash->{DestDirs} = [$parrotdir];
             return($filehash);
         },
+    },
+    bin => {
+        ismeta => 1,
+        optiondir => 'bin',
+        transform => sub {
+            my($filehash) = @_;
+            if ($filehash->{Dest} ne 'parrotbug') {
+                $filehash->{Installable} = $filehash->{Dest} =~ s/^installable_//;
+            }
+            return($filehash);
+        },
+        isbin => 1,
     },
     src => {
         ismeta => 1,
@@ -170,9 +191,10 @@ my($filehashes, $directories) = lines_to_files(
 );
 
 unless ( $options{'dry-run'} ) {
+    $directories->{File::Spec->catdir( $options{datadir}, $parrotdir)} = 1;
     create_directories($options{destdir}, $directories);
 }
-install_files($options{destdir}, $options{'dry-run'}, $filehashes);
+install_files(\%options, 'dev', $filehashes);
 
 print "Finished install_dev_files.pl\n";
 

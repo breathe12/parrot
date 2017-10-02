@@ -1,5 +1,5 @@
 #! perl
-# Copyright (C) 2001-2005, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 use strict;
 use warnings;
@@ -10,11 +10,11 @@ use Parrot::Test::PGE;
 
 =head1 NAME
 
-t/library/pge_globs.t
+t/library/pge_globs.t - test PGE globs
 
 =head1 SYNOPSIS
 
-        % prove -Ilib t/library/pge_globs.t
+        % prove t/library/pge_globs.t
 
 =head1 DESCRIPTION
 
@@ -60,7 +60,7 @@ pgeglob_isnt( '', '[^0]', 'glob empty string' );
 ## alternate
 pir_output_is( <<'CODE', <<'OUT', "Glob, alternate" );
 
-.sub _main
+.sub _main :main
   load_bytecode "PGE.pbc"
   load_bytecode "PGE/Glob.pbc"
 

@@ -1,10 +1,10 @@
 #! perl
-# Copyright (C) 2007, Parrot Foundation.
+# Copyright (C) 2007-2014, Parrot Foundation.
 # auto/arch-01.t
 
 use strict;
 use warnings;
-use Test::More tests =>  83;
+use Test::More tests =>  89;
 use Carp;
 use lib qw( lib t/configure/testlib );
 use_ok('config::auto::arch');
@@ -13,7 +13,7 @@ use Parrot::Configure::Step::Test;
 use Parrot::Configure::Test qw(
     test_step_constructor_and_description
 );
-use IO::CaptureOutput qw| capture |;
+use Parrot::Configure::Utils qw| capture |;
 
 my ($args, $step_list_ref) = process_options( {
     argv => [ ],
@@ -55,7 +55,7 @@ $step = test_step_constructor_and_description($conf);
     ok( $ret, "runstep() returned true value" );
     is($step->result(), q{}, "Result was empty string as expected");
     like($stdout,
-        qr/determining operating system and cpu architecture/s,
+        qr/determining operating system and cpu architecture and type/s,
         "Got expected verbose output"
     );
 }
@@ -69,6 +69,18 @@ $conf->replenish($serialized);
     mode => q{configure},
 } );
 
+sub chk_cpuarch {
+    my $expected = shift;
+    if ($^O eq 'darwin' and -x '/usr/sbin/system_profiler') {
+        ok(1, "SKIP darwin sets cpuarch independent of archname");
+    }
+    else {
+        is($conf->data->get('cpuarch'), $expected,
+           "'cpuarch' was set as expected");
+    }
+}
+
+
 $conf->add_steps($pkg);
 $conf->options->set( %{$args} );
 $step = test_step_constructor_and_description($conf);
@@ -77,8 +89,7 @@ $conf->data->set('archname' => $pseudoarch);
 $ret = $step->runstep($conf);
 ok( $ret, "runstep() returned true value: $pseudoarch" );
 is($step->result(), q{}, "Result was empty string as expected");
-is($conf->data->get('cpuarch'), q{},
-    "'cpuarch' was set as expected");
+chk_cpuarch("");
 is($conf->data->get('osname'), $pseudoarch,
     "'osname' was set as expected");
 
@@ -100,8 +111,7 @@ $conf->data->set('archname' => $pseudoarch);
 $ret = $step->runstep($conf);
 ok( $ret, "runstep() returned true value: $pseudoarch" );
 is($step->result(), q{}, "Result was empty string as expected");
-is($conf->data->get('cpuarch'), q{ppc},
-    "'cpuarch' was set as expected");
+chk_cpuarch("ppc");
 is($conf->data->get('osname'), q{darwin},
     "'osname' was set as expected");
 
@@ -123,8 +133,7 @@ $conf->data->set('archname' => $pseudoarch);
 $ret = $step->runstep($conf);
 ok( $ret, "runstep() returned true value: $pseudoarch" );
 is($step->result(), q{}, "Result was empty string as expected");
-is($conf->data->get('cpuarch'), q{i386},
-    "'cpuarch' was set as expected");
+chk_cpuarch("i386");
 is($conf->data->get('osname'), q{darwin},
     "'osname' was set as expected");
 
@@ -145,8 +154,7 @@ $conf->data->set('archname' => $pseudoarch);
 $ret = $step->runstep($conf);
 ok( $ret, "runstep() returned true value: $pseudoarch" );
 is($step->result(), q{}, "Result was empty string as expected");
-is($conf->data->get('cpuarch'), q{amd64},
-    "'cpuarch' was set as expected");
+chk_cpuarch("amd64");
 is($conf->data->get('osname'), q{MSWin32},
     "'osname' was set as expected");
 
@@ -167,8 +175,7 @@ $conf->data->set('archname' => $pseudoarch);
 $ret = $step->runstep($conf);
 ok( $ret, "runstep() returned true value: $pseudoarch" );
 is($step->result(), q{}, "Result was empty string as expected");
-is($conf->data->get('cpuarch'), q{i386},
-    "'cpuarch' was set as expected");
+chk_cpuarch("i386");
 is($conf->data->get('osname'), q{MSWin32},
     "'osname' was set as expected");
 
@@ -189,9 +196,28 @@ $conf->data->set('archname' => $pseudoarch);
 $ret = $step->runstep($conf);
 ok( $ret, "runstep() returned true value: $pseudoarch" );
 is($step->result(), q{}, "Result was empty string as expected");
-is($conf->data->get('cpuarch'), q{i386},
-    "'cpuarch' was set as expected");
+chk_cpuarch("i386");
 is($conf->data->get('osname'), q{cygwin},
+    "'osname' was set as expected");
+
+$conf->replenish($serialized);
+
+########## mock msys ##########
+
+($args, $step_list_ref) = process_options( {
+    argv => [ ],
+    mode => q{configure},
+} );
+
+$conf->add_steps($pkg);
+$conf->options->set( %{$args} );
+$step = test_step_constructor_and_description($conf);
+$pseudoarch = q{msys};
+$conf->data->set('archname' => $pseudoarch);
+$ret = $step->runstep($conf);
+ok( $ret, "runstep() returned true value: $pseudoarch" );
+is($step->result(), q{}, "Result was empty string as expected");
+is($conf->data->get('osname'), q{msys},
     "'osname' was set as expected");
 
 $conf->replenish($serialized);
@@ -211,8 +237,7 @@ $conf->data->set('archname' => $pseudoarch);
 $ret = $step->runstep($conf);
 ok( $ret, "runstep() returned true value: $pseudoarch" );
 is($step->result(), q{}, "Result was empty string as expected");
-is($conf->data->get('cpuarch'), q{ppc},
-    "'cpuarch' was set as expected");
+chk_cpuarch("ppc");
 is($conf->data->get('osname'), q{linux},
     "'osname' was set as expected");
 
@@ -233,8 +258,7 @@ $conf->data->set('archname' => $pseudoarch);
 $ret = $step->runstep($conf);
 ok( $ret, "runstep() returned true value: $pseudoarch" );
 is($step->result(), q{}, "Result was empty string as expected");
-is($conf->data->get('cpuarch'), q{i386},
-    "'cpuarch' was set as expected");
+chk_cpuarch("i386");
 is($conf->data->get('osname'), q{cygwin},
     "'osname' was set as expected");
 

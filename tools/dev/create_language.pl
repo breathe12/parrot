@@ -57,6 +57,14 @@ unless (@ARGV) {
     die "usage: $0 language [path]\n";
 }
 
+if ($ARGV[0] eq '--help') {
+    print <<HELP;
+usage: $0 language [PATH]
+Use perldoc $0 to read the documentation.
+HELP
+    exit 0;
+}
+
 ##  determine the language we're trying to build
 my $lang = $ARGV[0];
 my $lclang = lc $lang;
@@ -323,7 +331,7 @@ MAIN: {
 
     if ($parrot_errors) {
         die <<"END";
-===SORRY!===
+###SORRY!###
 $parrot_errors
 To automatically checkout (svn) and build a copy of parrot r$reqsvn,
 try re-running Configure.pl with the '--gen-parrot' option.
@@ -398,7 +406,7 @@ sub verify_parrot {
         my $missing = join("\n", @missing);
         die <<"END";
 
-===SORRY!===
+###SORRY!###
 I'm missing some needed files from the Parrot installation:
 $missing
 (Perhaps you need to use Parrot's "make install" or
@@ -486,7 +494,7 @@ PARROT_LIBRARY_DIR = $(PARROT_LIB_DIR)/library
 HAS_ICU            = @has_icu@
 
 CC            = @cc@
-CFLAGS        = @ccflags@ @cc_shared@ @cc_debug@ @ccwarn@ @cc_hasjit@ @cg_flag@ @gc_flag@
+CFLAGS        = @ccflags@ @cc_shared@ @cc_debug@ @ccwarn@ @cg_flag@
 EXE           = @exe@
 LD            = @ld@
 LDFLAGS       = @ldflags@ @ld_debug@
@@ -721,6 +729,7 @@ __src/@lang@.pir__
     .return ($P1)
 .end
 __src/@lang@/Grammar.pm__
+
 =begin overview
 
 This is the grammar for @lang@ in Perl 6 rules.

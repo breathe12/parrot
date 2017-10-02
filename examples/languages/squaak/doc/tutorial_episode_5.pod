@@ -1,4 +1,11 @@
-# Copyright (C) 2008, Parrot Foundation.
+# Copyright (C) 2008-2012, Parrot Foundation.
+
+=pod
+
+=head1 DESCRIPTION
+
+This is the fifth episode in a tutorial series on building a compiler with the
+Parrot Compiler Tools.
 
 =head1 Episode 5: Variable Declaration and Scope
 
@@ -21,7 +28,9 @@ C<"Undef">. Some examples are shown below.
  x = 42             # x was not declared, so it is global
  var k = 10         # k is local and initialized to 10
  a + b              # neither a nor b was declared;
-                    # both default to the value "Undef"Scoping and Symbol Tables
+                    # both default to the value "Undef"
+
+=head2 Scoping and Symbol Tables
 
 Earlier we mentioned the need to store declared local variables. In compiler
 jargon, such a data structure to store declarations is called a I<symbol table>.
@@ -189,7 +198,7 @@ Now we need to modify our TOP rule to call begin_TOP.
 
  rule TOP {
      <.begin_TOP>
-     <statementlist>
+     <statement_list>
      [ $ || <.panic: "Syntax error"> ]
  }
 
@@ -208,7 +217,7 @@ action for TOP.
  method TOP($/, $key) {
      our @?BLOCK;
      my $past := @?BLOCK.shift();
-     $past.push($<statementlist>.ast);
+     $past.push($<statement_list>.ast);
      make $past;
  }
 

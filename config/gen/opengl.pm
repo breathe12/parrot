@@ -1,4 +1,4 @@
-# Copyright (C) 2008, Parrot Foundation.
+# Copyright (C) 2008-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -44,6 +44,15 @@ use base qw(Parrot::Configure::Step);
 
 use Parrot::Configure::Utils ':gen';
 
+# taken from List::MoreUtils
+sub any {
+    my $f = shift;
+    return if ! @_;
+    for (@_) {
+        return 1 if $f->();
+    }
+    return 0;
+}
 
 my @GLUT_1_CALLBACKS = (
     [ 'Display',          'void' ],
@@ -248,50 +257,26 @@ my %C_TYPE = (
 );
 
 my %NCI_TYPE = (
-    void         => 'v',
-    char         => 'c',
-    short        => 's',
-    int          => 'i',
-    long         => 'l',
-    size_t       => 'l',
-    ptrdiff_t    => 'l',
-    # Requires TT #1182
-    # longlong     => 'L',
-    float        => 'f',
-    double       => 'd',
+    ( map {( $_ => $_ )}
+        qw[ void char short int long longlong float double longdouble ] ),
 
-    'char*'      => 't',
+    size_t       => 'long',
+    ptrdiff_t    => 'long',
 
-    'short*'     => 'p',
-    'int*'       => 'p',
-    'long*'      => 'p',
-    'ptrdiff_t*' => 'p',
-    'longlong*'  => 'p',
-    'float*'     => 'p',
-    'double*'    => 'p',
-    'void*'      => 'p',
+    ( map {( "$_*" => 'ptr', "$_**" => 'ptr' )}
+        qw[ void char short int long ptrdiff_t longlong float double ] ),
 
-    'char**'     => 'p',
-    'short**'    => 'p',
-    'int**'      => 'p',
-    'long**'     => 'p',
-    'longlong**' => 'p',
-    'float**'    => 'p',
-    'double**'   => 'p',
-    'void**'     => 'p',
-
-    'double***'  => 'p',
+    'double***'  => 'ptr',
 );
 
 my %PCC_TYPE = (
-    c => 'I',
-    s => 'I',
-    i => 'I',
-    l => 'I',
-    f => 'N',
-    d => 'N',
-    t => 'S',
-    p => 'P',
+    char   => 'I',
+    short  => 'I',
+    int    => 'I',
+    long   => 'I',
+    float  => 'N',
+    double => 'N',
+    ptr    => 'P',
 );
 
 my %PCC_CAST = (
@@ -302,7 +287,7 @@ my %PCC_CAST = (
 );
 
 my %OVERRIDE = (
-    'glutInit'  => 'v3p',
+    glutInit => [[qw[ void int& ptr ]], [0, 0, 0]],
 );
 
 my @IGNORE = (
@@ -348,23 +333,6 @@ my @IGNORE = (
     'DescribePixelFormat',
     'GetPixelFormat',
     'SetPixelFormat',
-
-    # Can't handle longlong until TT #1182 is done
-    'glBufferAddressRangeNV',
-    'glClientWaitSync',
-    'glUniformui64NV',
-    'glProgramUniformui64NV',
-    'glPresentFrameKeyedNV',
-    'glPresentFrameDualFillNV',
-    'glWaitSync',
-    'glXSwapBuffersMscOML',
-    'glXWaitForMscOML',
-    'glXWaitForSbcOML',
-    'wglGetSyncValuesOML',
-    'wglSwapBuffersMscOML',
-    'wglSwapLayerBuffersMscOML',
-    'wglWaitForMscOML',
-    'wglWaitForSbcOML',
 
     # Can't handle weird data types specified only in proprietary headers
     'glXCreateGLXVideoSourceSGIX',
@@ -447,7 +415,7 @@ sub _init {
     return {
         description => q{Generating OpenGL bindings},
         result      => q{},
-    }
+    };
 }
 
 sub runstep {
@@ -533,8 +501,14 @@ sub runstep {
     my %skip = map {($_ => 1)} @SKIP;
     @header_files =
         grep {my ($file) = m{([^/]+)$}; !$skip{$file}} @header_files;
-    die "OpenGL enabled and detected, but no OpenGL headers found!"
-        unless @header_files;
+    if (!@header_files) {
+        my $err = "OpenGL enabled and detected, but no OpenGL headers found!";
+        if ( $^O eq 'darwin' ) {
+            $err .= "\nIf you are on OS X 10.9 (Mavericks) with XCode 5.0.1,"
+                 .  " see: https://github.com/parrot/parrot/issues/1016";
+        }
+        die $err;
+    }
 
     my $files_str = join("\n\t", @header_files) . "\n";
     $conf->debug(
@@ -628,8 +602,7 @@ sub gen_opengl_defines {
                        $define, $api_defs->{$define};
         }
     }
-
-    $conf->append_configure_log($MACRO_FILE);
+    add_to_generated($MACRO_FILE, "[main]");
 
     return 1;
 }
@@ -669,6 +642,7 @@ sub gen_opengl_wrappers {
             next unless /API/ or /\bextern\b/ or /\bmui[A-Z]/;
             next if     /^#/;
             next if     /\btypedef\b/;
+            next if     /extern gleGC \*_gle_gc /;
 
             # Work around bug in Mac OS X headers (glext.h as of 10.6.3, at least)
             next if /^\s*extern\s+\w+\s+\(\*\s+/;
@@ -686,6 +660,9 @@ sub gen_opengl_wrappers {
             # also do general cleanup to make parsing easier
             s/\b(?:AVAILABLE|DEPRECATED_(?:IN|FOR))_MAC_OS_X_VERSION_\d+_\d+_AND_LATER\b\s*//;
             s/\bAVAILABLE_MAC_OS_X_VERSION_\d+_\d+_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_\d+_\d+\b\s*//;
+            s/\bOPENGL_DEPRECATED\(10_\d+, 10_\d+\)\s*//;
+            s/\bOPENGL_DEPRECATED_MSG\(10_\d+, 10_\d+, "[^")]+"\)\s*//;
+            s/\bOPENGL_AVAILABLE\(10_\d+\)\s*//;
             s/\b__cdecl\b\s*//;
             s/\b__stdcall\b\s*//;
             s/\b_CRTIMP\b\s*//;
@@ -748,9 +725,10 @@ sub gen_opengl_wrappers {
             $group = lc $group;
 
             # Convert return and param types to NCI signature
-            my $nci_sig = $OVERRIDE{$name};
+            my @nci_sig    = @{${$OVERRIDE{$name} or []}[0] or []};
+            my @cstr_trans = @{${$OVERRIDE{$name} or []}[1] or []};
 
-            unless ($nci_sig) {
+            unless (@nci_sig) {
                 $params = '' if $params eq 'void';
                 my @params = split /, / => $params;
                 unshift @params, $return;
@@ -760,31 +738,35 @@ sub gen_opengl_wrappers {
                     $param =~ s/ \w+$// unless $NCI_TYPE{$param};
                     unless ($NCI_TYPE{$param}) {
                         $fail{$file}++;
-                        warn "In OpenGL header '$file', prototype '$name', can't handle type '$param'; original prototype:\n  $orig\n";
+                        warn "In OpenGL header '$file', prototype '$name', can't handle type '$param'; original prototype:\n  $orig\n"
+                          if $verbose;
                         next PROTO;
                     }
-                    $nci_sig .= $NCI_TYPE{$param};
+                    push @nci_sig,    $NCI_TYPE{$param};
+                    push @cstr_trans, $param eq 'char*';
                 }
 
-                if ($nci_sig =~ /.v/) {
+                if (any sub { $_ eq 'void' }, @nci_sig[1..$#nci_sig]) {
                     $fail{$file}++;
-                    warn "In OpenGL header '$file', prototype '$name', there is a void parameter; original prototype:\n  $orig\n";
+                    warn "In OpenGL header '$file', prototype '$name', there is a void parameter; original prototype:\n  $orig\n"
+                      if $verbose;
                     next PROTO;
                 }
             }
 
             # Success!  Save results.
             $pass{$file}++;
-            $sigs{$nci_sig}++;
-            push @{$funcs{$group}}, [$name, $nci_sig];
+            $sigs{join ',', @nci_sig} = [@nci_sig];
+            push @{$funcs{$group}}, [$name, [@nci_sig], [@cstr_trans]];
 
+            my $nci_sig = '[' . (join ',', @nci_sig) . ']';
             print "$group\t$nci_sig\t$return $name($params);\n"
                 if $verbose >= 3;
         }
     }
 
     # PHASE 2: Write unique signatures to NCI signatures file
-    my @sigs = sort keys %sigs;
+    my @sigs = values %sigs;
 
     open my $sigs, '>', $SIGS_FILE
         or die "Could not open NCI signatures file '$SIGS_FILE' for write: $!";
@@ -795,21 +777,21 @@ sub gen_opengl_wrappers {
 $autogen_header
 
 # GLUT callbacks
-v    JP
-v    JPi
-v    JPii
+v    pP
+v    pPi
+v    pPii
 
 # Generated signatures
 HEADER
 
     foreach my $nci_sig (@sigs) {
-        my ($return, $params) = $nci_sig =~ /^(.)(.*)$/;
+        my ($return, @params) = ($$nci_sig[0], @$nci_sig[1..$#$nci_sig]);
 
-        print $sigs "$return    $params\n";
+        print $sigs "$return    (", (join ',', @params), ")\n";
     }
 
     close $sigs;
-    $conf->append_configure_log($SIGS_FILE);
+    add_to_generated($SIGS_FILE, "[]"); # [devel]src ?
 
     # PHASE 3: Write function lists for each OpenGL-related library
 
@@ -824,65 +806,95 @@ HEADER
     .local pmc glutcb_funcs
     glutcb_funcs = new 'ResizableStringArray'
     push glutcb_funcs, 'Parrot_glut_nci_loader'
-    push glutcb_funcs, 'vJ'
+    push glutcb_funcs, 'void,ptr'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbCloseFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbDisplayFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbIdleFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbMenuDestroyFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbOverlayDisplayFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbWMCloseFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbEntryFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbMenuStateFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbVisibilityFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbWindowStatusFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbButtonBoxFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbDialsFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbMotionFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbPassiveMotionFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbReshapeFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbSpaceballButtonFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbTabletMotionFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbKeyboardFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbKeyboardUpFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbMenuStatusFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbSpaceballMotionFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbSpaceballRotateFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbSpecialFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbSpecialUpFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbMouseFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbMouseWheelFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbTabletButtonFunc'
-    push glutcb_funcs, 'vJP'
+    push glutcb_funcs, 'void,ptr,PMC'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbTimerFunc'
-    push glutcb_funcs, 'vJPii'
+    push glutcb_funcs, 'void,ptr,PMC,int,int'
+    push glutcb_funcs, ''
     push glutcb_funcs, 'glutcbJoystickFunc'
-    push glutcb_funcs, 'vJPi'
+    push glutcb_funcs, 'void,ptr,PMC,int'
+    push glutcb_funcs, ''
 
     .return (glutcb_funcs)
 .end
@@ -903,11 +915,18 @@ SUB_HEADER
 
         my @funcs = sort {$a->[0] cmp $b->[0]} @{$funcs{$group}};
         foreach my $func (@funcs) {
-            my ($name, $sig) = @$func;
+            my ($name, $sig, $cstr) = @$func;
+
+            my $sig_str  = join ',', @$sig;
+            my $cstr_str = do {
+                my $i = -1;
+                join ',', map $_->[1], grep $_->[0], map [$_, $i++], @$cstr;
+            };
 
             print $funcs <<"FUNCTION"
     push $list_name, '$name'
-    push $list_name, '$sig'
+    push $list_name, '$sig_str'
+    push $list_name, '$cstr_str'
 FUNCTION
         }
         print $funcs <<"SUB_FOOTER";
@@ -918,7 +937,7 @@ SUB_FOOTER
     }
 
     close $funcs;
-    $conf->append_configure_log($FUNCS_FILE);
+    add_to_generated($FUNCS_FILE, "[main]");
 
     # PHASE 4: Print statistical info on parse results if verbose
     if ($verbose) {
@@ -942,7 +961,7 @@ SUB_FOOTER
         }
 
         printf "\n===> %d unique signatures successfully translated.\n",
-               scalar @sigs
+               scalar @sigs;
     }
 
     return 1;
@@ -1025,7 +1044,7 @@ sub gen_glut_callbacks {
 #
 # This file is generated automatically by config/gen/opengl.pm
 
-Copyright (C) 2008, Parrot Foundation.
+Copyright (C) 2008, 2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -1049,8 +1068,11 @@ cannot be used.
 
 #include "parrot/parrot.h"
 #include "parrot/extend.h"
+/* workaround freeglut problem from 2.0 to at least 2.8, see [GH #1070] */
+#ifndef __APPLE__
+# define __APPLE__ 0
+#endif
 #include <$glut_header>
-
 
 typedef enum {
 $enums
@@ -1236,13 +1258,16 @@ FOOTER
     print $c_file $std_cbs;
     print $c_file $footer;
 
-    $conf->append_configure_log($C_FILE);
-
+    add_to_generated($C_FILE, "[devel]", 'src');
 
     return 1;
 }
 
 1;
+
+=end ignored
+
+=cut
 
 # Local Variables:
 #   mode: cperl

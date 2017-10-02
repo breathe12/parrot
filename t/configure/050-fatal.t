@@ -1,17 +1,17 @@
 #! perl
-# Copyright (C) 2007, Parrot Foundation.
+# Copyright (C) 2007,2014, Parrot Foundation.
 # 050-fatal.t
 
 use strict;
 use warnings;
 
-use Test::More tests =>  6;
+use Test::More tests =>  5;
 use Carp;
 use lib qw( lib t/configure/testlib );
 use Parrot::Configure;
 use Parrot::Configure::Options qw( process_options );
 use Parrot::Configure::Step::List qw( get_steps_list );
-use IO::CaptureOutput qw | capture |;
+use Parrot::Configure::Utils qw | capture |;
 
 $| = 1;
 is($|, 1, "output autoflush is set");
@@ -32,8 +32,6 @@ my $description = 'Determining if your computer does zeta';
 $conf->add_steps( $first_step, get_steps_list() );
 
 $conf->options->set(%args);
-is($conf->options->{c}->{debugging}, 1,
-    "command-line option '--debugging' has been stored in object");
 
 {
     my $rv;

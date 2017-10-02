@@ -1,0 +1,230 @@
+/*
+Copyright (C) 2001-2014, Parrot Foundation.
+
+=head1 NAME
+
+src/pmc/alarm.pmc - Alarm PMC
+
+=head1 SYNOPSIS
+
+    .include 'alarm.pasm'
+
+    new P0, 'Alarm'
+    set P0[.PARROT_ALARM_TIME], N_time   # A FLOATVAL
+    set P0[.PARROT_ALARM_SUB],  P_sub    # set handler sub PMC
+    invoke P0                            # schedule the alarm
+
+=head1 DESCRIPTION
+
+Sometime after N_time, P_sub will be called exactly once. Notice that due to
+various factors, the alarm is not guaranteed to execute at N_time, but only
+a short time thereafter. The length of "a short time" is very system dependent.
+
+=head2 Functions
+
+=over 4
+
+=cut
+
+*/
+
+#include "parrot/scheduler_private.h"
+
+/* HEADERIZER HFILE: none */
+/* HEADERIZER BEGIN: static */
+/* HEADERIZER END: static */
+
+pmclass Alarm provides invokable auto_attrs {
+    ATTR FLOATVAL alarm_time;       /* The time when the alarm should trigger */
+    ATTR PMC     *alarm_task;       /* The Task or Sub PMC to execute */
+
+/*
+
+=item C<void init()>
+
+Initializes the alarm.
+
+=cut
+
+*/
+
+    VTABLE void init() {
+        Parrot_Alarm_attributes * const data = PARROT_ALARM(SELF);
+        data->alarm_time = 0.0;
+        data->alarm_task = PMCNULL;
+
+        PObj_custom_mark_SET(SELF);
+    }
+
+/*
+
+=item C<PMC *clone()>
+
+Create a copy of the alarm.
+
+=cut
+
+*/
+
+    VTABLE PMC *clone() :no_wb {
+        PMC * const copy = Parrot_pmc_new(INTERP, SELF->vtable->base_type);
+
+        Parrot_Alarm_attributes * const new_struct = PARROT_ALARM(copy);
+        Parrot_Alarm_attributes * const old_struct = PARROT_ALARM(SELF);
+
+        new_struct->alarm_time = old_struct->alarm_time;
+        new_struct->alarm_task = old_struct->alarm_task;
+
+        return copy;
+    }
+
+/*
+
+=item C<PMC *get_pmc_keyed_int(INTVAL key)>
+
+Returns the PMC associated with C<key>.
+
+=cut
+
+*/
+
+    VTABLE PMC *get_pmc_keyed_int(INTVAL key) :no_wb {
+        switch (key) {
+            case PARROT_ALARM_TASK:
+                return PARROT_ALARM(SELF)->alarm_task;
+            case PARROT_ALARM_TIME: {
+                PMC * const floatval = Parrot_pmc_new(INTERP, enum_class_Float);
+                VTABLE_set_number_native(INTERP, floatval, PARROT_ALARM(SELF)->alarm_time);
+                return floatval;
+            }
+            default:
+                return PMCNULL;
+        }
+    }
+
+/*
+
+=item C<FLOATVAL get_number_keyed_int(INTVAL key)>
+
+Returns the number associated with C<key>.
+
+=cut
+
+*/
+
+    VTABLE FLOATVAL get_number_keyed_int(INTVAL key) :no_wb {
+        UNUSED(INTERP)
+        if (key == PARROT_ALARM_TIME)
+            return PARROT_ALARM(SELF)->alarm_time;
+
+        return 0.0;
+    }
+
+/*
+
+=item C<FLOATVAL get_number()>
+
+Having the alarm numify to the time is convienient for sorting.
+
+=cut
+
+*/
+
+    VTABLE FLOATVAL get_number() :no_wb {
+        UNUSED(INTERP)
+        return PARROT_ALARM(SELF)->alarm_time;
+    }
+
+/*
+
+=item C<void set_pmc_keyed_int(INTVAL key, PMC *value)>
+
+Sets the PMC associated with C<key> to C<*value>.
+
+=cut
+
+*/
+
+    VTABLE void set_pmc_keyed_int(INTVAL key, PMC *value) :manual_wb {
+        if (key == PARROT_ALARM_TASK) {
+            SET_ATTR_alarm_task(INTERP, SELF, value);
+            PARROT_GC_WRITE_BARRIER(INTERP, SELF);
+        }
+    }
+
+/*
+
+=item C<opcode_t *invoke(void *next)>
+
+Schedules the alarm and adds it to the alarm queue.
+
+=cut
+
+*/
+
+    VTABLE opcode_t *invoke(void *next) :no_wb {
+        Parrot_cx_schedule_alarm(INTERP, SELF);
+        return (opcode_t *)next;
+    }
+
+/*
+
+=item C<void set_number_keyed_int(INTVAL key, FLOATVAL value)>
+
+Sets the floating-point value associated with C<key> to C<value>.
+
+=cut
+
+*/
+
+    VTABLE void set_number_keyed_int(INTVAL key, FLOATVAL value) :manual_wb {
+        if (key == PARROT_ALARM_TIME) {
+            SET_ATTR_alarm_time(INTERP, SELF, value);
+            PARROT_GC_WRITE_BARRIER(INTERP, SELF);
+        }
+    }
+
+/*
+
+Required functions for GC and Freeze / Thaw.
+
+*/
+
+    VTABLE void mark() :no_wb {
+        PMC *sub;
+        GET_ATTR_alarm_task(INTERP, SELF, sub);
+        Parrot_gc_mark_PMC_alive(INTERP, sub);
+    }
+
+    VTABLE void visit(PMC *info) :no_wb {
+        PMC *sub;
+        GET_ATTR_alarm_task(INTERP, SELF, sub);
+        VISIT_PMC(INTERP, info, sub);
+        SUPER(info);
+    }
+
+    VTABLE void freeze(PMC *info) :no_wb {
+        SUPER(info);
+        VTABLE_push_integer(INTERP, info, VTABLE_elements(INTERP, SELF));
+    }
+
+    VTABLE void thaw(PMC *info) :manual_wb {
+        SUPER(info);
+        SELF.set_integer_native(VTABLE_shift_integer(INTERP, info));
+    }
+}
+
+/*
+
+=back
+
+=cut
+
+*/
+
+/*
+ * Local variables:
+ *   c-file-style: "parrot"
+ * End:
+ * vim: expandtab shiftwidth=4 cinoptions='\:2=2' :
+ */

@@ -1,4 +1,4 @@
-# Copyright (C) 2005-2009, Parrot Foundation.
+# Copyright (C) 2005-2014, Parrot Foundation.
 
 package init::hints::darwin;
 
@@ -6,7 +6,6 @@ use strict;
 use warnings;
 
 use lib qw( lib );
-use File::Spec ();
 use base qw(Parrot::Configure::Step);
 use Parrot::BuildUtil;
 
@@ -25,7 +24,7 @@ sub runstep {
     my $share_ext = $conf->option_or_data('share_ext');
     my $version   = $conf->option_or_data('VERSION');
 
-    # The hash referenced by $flagsref is the list of options that have -arch
+    # The hash referenced by $flags is the list of options that have -arch
     # flags added to them implicitly through config/init/defaults.pm when
     # using Apple's Perl 5.8 build to run Configure.pl (it's a
     # multi-architecture build).  This doesn't play nice with getting parrot
@@ -33,51 +32,50 @@ sub runstep {
     # friends.  So, it's time to remove all -arch flags set in $conf->data and
     # force a single, native architecture to being the default build.
 
-    my $flagsref = _strip_arch_flags($conf);
+    my $flags = _strip_arch_flags($conf);
 
     # And now, after possibly losing a few undesired compiler and linker
     # flags, on to the main Darwin config.
 
     my $libs = _strip_ldl_as_needed( $conf->data->get( 'libs' ) );
 
-    _set_deployment_environment();
+    my $deploy_target = _set_deployment_environment();
 
     my $lib_dir = $conf->data->get('build_dir') . "/blib/lib";
-    $flagsref->{ldflags} .= " -L$lib_dir";
+    $flags->{ldflags} .= ' -L"' . $lib_dir . '"';
 
-    if ($ENV{'MACOSX_DEPLOYMENT_TARGET'} eq '10.6') {
-        $flagsref->{ccflags} .= ' -pipe -fno-common ';
+    $flags->{ccflags} .= ' -pipe -fno-common ';
+    if ($deploy_target =~ /^10\.[1234]$/ and !$conf->options->get('cc')) {
+        # Only apple cc understands -Wno-long-double, macports gcc not
+        $flags->{ccflags} .= '-Wno-long-double ';
     }
-    else {
-        $flagsref->{ccflags} .= ' -pipe -fno-common -Wno-long-double ';
-    }
 
-    $flagsref->{linkflags} .= " -undefined dynamic_lookup";
+    $flags->{linkflags} .= ""; # -undefined dynamic_lookup";
 
-    _probe_for_libraries($conf, $flagsref, 'fink');
-    _probe_for_libraries($conf, $flagsref, 'macports');
+    _probe_for_libraries($conf, $flags, 'fink');
+    _probe_for_libraries($conf, $flags, 'macports');
 
-    for my $flag ( keys %$flagsref ) {
-        $flagsref->{$flag} =~ s/^\s+//;
+    for my $flag ( keys %$flags ) {
+        $flags->{$flag} =~ s/^\s+//;
     }
 
     my $osvers = `/usr/sbin/sysctl -n kern.osrelease`;
     chomp $osvers;
 
-    $conf->data->set(
+    my %darwin_selections = (
         darwin              => 1,
-        osx_version         => $ENV{'MACOSX_DEPLOYMENT_TARGET'},
+        osx_version         => $deploy_target,
         osvers              => $osvers,
-        ccflags             => $flagsref->{ccflags},
-        ldflags             => $flagsref->{ldflags},
-        ccwarn              => "-Wno-shadow",
+        ccflags             => $flags->{ccflags},
+        ldflags             => $flags->{ldflags},
+        #ccwarn              => "-Wno-shadow",
         libs                => $libs,
         share_ext           => '.dylib',
         load_ext            => '.bundle',
-        link                => 'c++',
-        linkflags           => $flagsref->{linkflags},
-        ld                  => 'c++',
-        ld_share_flags      => '-dynamiclib -undefined dynamic_lookup',
+        link                => $flags->{link} || 'c++',
+        linkflags           => $flags->{linkflags},
+        ld                  => $flags->{ld} || 'c++',
+        ld_share_flags      => '-dynamiclib',
         ld_load_flags       => '-undefined dynamic_lookup -bundle',
         memalign            => 'some_memalign',
         has_dynamic_linking => 1,
@@ -86,15 +84,35 @@ sub runstep {
         # installable_parrot records the path to the blib version
         # of the library.
 
-        parrot_is_shared       => 1,
-        libparrot_shared       => "libparrot.$version$share_ext",
+        parrot_is_shared       => $flags->{debugging} ? 0 : 1,
+
+        # GH #1213: use libparrotsrc$version locally and libparrot when installed
+        libparrot_shared       => "libparrotsrc.$version$share_ext",
         libparrot_shared_alias => "libparrot$share_ext",
+        inst_libparrot_shared  => "libparrot.$version$share_ext",
         rpath                  => "-L",
-        libparrot_soname       => "-install_name "
-            . $lib_dir
+        inst_libparrot_soname  => "-install_name "
+            . '"'
+            . $conf->data->get('libdir')
             . '/libparrot'
             . $conf->data->get('share_ext')
-    );
+            . '"',
+        libparrot_soname       => "-install_name \"$lib_dir/libparrotsrc.$version$share_ext\""
+                            );
+    $darwin_selections{dynext_dirs} = $flags->{dynext_dirs} if $flags->{dynext_dirs};
+    if ( $conf->options->get('disable-rpath') ) {
+        $darwin_selections{inst_libparrot_soname} = '';
+        $darwin_selections{libparrot_soname} = '';
+    }
+
+    my $darwin_hints = "Darwin hints settings:\n";
+    for my $k (sort keys %darwin_selections) {
+        $darwin_hints .= sprintf("  %-24s => %s\n" => (
+                $k, qq|'$darwin_selections{$k}'|,
+        ) );
+    }
+    $conf->debug($darwin_hints);
+    $conf->data->set( %darwin_selections );
 }
 
 #################### INTERNAL SUBROUTINES ####################
@@ -108,38 +126,38 @@ sub _precheck {
 }
 
 sub _strip_arch_flags_engine {
-    my ($arches, $stored, $flagsref, $flag) = @_;
+    my ($arches, $stored, $flags, $flag) = @_;
     for my $arch ( @{ $arches } ) {
         $stored =~ s/-arch\s+$arch//g;
         $stored =~ s/\s+/ /g;
-        $flagsref->{$flag} = $stored;
+        $flags->{$flag} = $stored;
     }
-    return $flagsref;
+    return $flags;
 }
 
 sub _postcheck {
-    my ($conf, $flagsref, $flag) = @_;
-    my $f = $flagsref->{$flag} || '(nil)';
+    my ($conf, $flags, $flag) = @_;
+    my $f = $flags->{$flag} || '(nil)';
     $conf->debug("Post-check: $f\n");
 }
 
 sub _strip_arch_flags {
     my ($conf) = @_;
-    my $flagsref  = { map { $_ => '' } @{ $defaults{problem_flags} } };
+    my $flags  = { map { $_ => '' } @{ $defaults{problem_flags} } };
 
     $conf->debug("\nStripping -arch flags due to Apple multi-architecture build problems:\n");
-    for my $flag ( keys %{ $flagsref } ) {
+    for my $flag ( keys %{ $flags } ) {
         my $stored = $conf->data->get($flag) || '';
 
         _precheck($conf, $flag, $stored);
 
-        $flagsref = _strip_arch_flags_engine(
-            $defaults{architectures}, $stored, $flagsref, $flag
+        $flags = _strip_arch_flags_engine(
+            $defaults{architectures}, $stored, $flags, $flag
         );
 
-        _postcheck($conf, $flagsref, $flag);
+        _postcheck($conf, $flags, $flag);
     }
-    return $flagsref;
+    return $flags;
 }
 
 sub _strip_ldl_as_needed {
@@ -164,6 +182,7 @@ sub _set_deployment_environment {
         $OSX_vers =join '.', (split /[.]/, $OSX_vers)[0,1];
         $ENV{'MACOSX_DEPLOYMENT_TARGET'} = $OSX_vers;
     }
+    return $ENV{'MACOSX_DEPLOYMENT_TARGET'};
 }
 
 sub _probe_for_fink {
@@ -172,7 +191,7 @@ sub _probe_for_fink {
     # regardless of where Fink itself is installed.
     my $fink_conf    = $defaults{fink_conf};
     unless (-f $fink_conf) {
-        $conf->debug("Fink configuration file not located\n");
+        $conf->debug("Fink configuration file $fink_conf not located\n");
         return;
     }
     my $fink_conf_str = Parrot::BuildUtil::slurp_file($fink_conf);
@@ -202,7 +221,8 @@ sub _probe_for_fink {
         my %addl_flags = (
             linkflags => "-L$fink_lib_dir",
             ldflags   => "-L$fink_lib_dir",
-            ccflags   => "-I$fink_include_dir",
+            ccflags   => "-isystem $fink_include_dir",
+            dynext_dirs => $fink_lib_dir."/",
         );
         return \%addl_flags;
     }
@@ -225,14 +245,15 @@ sub _probe_for_macports {
         my %addl_flags = (
             linkflags => "-L$ports_lib_dir",
             ldflags   => "-L$ports_lib_dir",
-            ccflags   => "-I$ports_include_dir",
+            ccflags   => "-isystem $ports_include_dir",
+            dynext_dirs => $ports_lib_dir."/",
         );
         return \%addl_flags;
     }
 }
 
 sub _probe_for_libraries {
-    my ($conf, $flagsref, $library) = @_;
+    my ($conf, $flags, $library) = @_;
     my $no_library_option = "darwin_no_$library";
     my $title = ucfirst(lc($library));
     unless ($conf->options->get( $no_library_option ) ) {
@@ -243,22 +264,22 @@ sub _probe_for_libraries {
         if ($library eq 'macports') {
             $addl_flags_ref = _probe_for_macports($conf);
         }
-        my $rv = _add_to_flags( $conf, $addl_flags_ref, $flagsref, $title );
+        my $rv = _add_to_flags( $conf, $addl_flags_ref, $flags, $title );
         return $rv;
     }
     return;
 }
 
 sub _add_to_flags {
-    my ( $conf, $addl_flags_ref, $flagsref, $title ) = @_;
+    my ( $conf, $addl_flags_ref, $flags, $title ) = @_;
     if ( defined $addl_flags_ref ) {
         foreach my $addl ( keys %{ $addl_flags_ref } ) {
             my %seen;
-            if ( defined $flagsref->{$addl} ) {
-                my @elements = split /\s+/, $flagsref->{$addl};
+            if ( defined $flags->{$addl} ) {
+                my @elements = split /\s+/, $flags->{$addl};
                 %seen = map {$_, 1} @elements;
             }
-            $flagsref->{$addl} .= " $addl_flags_ref->{$addl}"
+            $flags->{$addl} .= " $addl_flags_ref->{$addl}"
                 unless $seen{ $addl_flags_ref->{$addl} };
         }
         $conf->debug("Probe for $title successful\n");
@@ -290,6 +311,9 @@ Should you not want to search for either of these packages, you may specify
 the command-line options C<darwin_no_fink> and/or C<darwin_no_macports>.
 
 The functionality is tested in F<t/steps/init/hints/darwin-01.t>.
+
+Note that debugging with F<gdb> requires static linking (F<parrot_old>) and
+no C<-undefined dynamic_lookup>
 
 =cut
 

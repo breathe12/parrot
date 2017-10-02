@@ -1,5 +1,5 @@
 #! perl
-# Copyright (C) 2007, Parrot Foundation.
+# Copyright (C) 2007,2014, Parrot Foundation.
 # auto/snprintf-01.t
 
 use strict;
@@ -13,7 +13,7 @@ use Parrot::Configure::Step::Test;
 use Parrot::Configure::Test qw(
     test_step_constructor_and_description
 );
-use IO::CaptureOutput qw| capture |;
+use Parrot::Configure::Utils qw| capture |;
 
 ########## regular ##########
 
@@ -36,7 +36,7 @@ my $step = test_step_constructor_and_description($conf);
 
 $conf->replenish($serialized);
 
-########## _evaluate_snprintf() ##########
+########## _check() ##########
 
 ($args, $step_list_ref) = process_options( {
     argv            => [],
@@ -47,14 +47,14 @@ $step = test_step_constructor_and_description($conf);
 
 my $res;
 $res = q{old snprintf};
-ok($step->_evaluate_snprintf($conf, $res),
-    "_evaluate_snprintf returned true value");
+ok($step->_check($conf, $res),
+    "_check returned true value");
 ok($conf->data->get('HAS_OLD_SNPRINTF'),
     "Got expected value");
 
 $res = q{C99 snprintf};
-ok($step->_evaluate_snprintf($conf, $res),
-    "_evaluate_snprintf returned true value");
+ok($step->_check($conf, $res),
+    "_check returned true value");
 ok($conf->data->get('HAS_C99_SNPRINTF'),
     "Got expected value");
 ok($conf->data->get('HAS_SNPRINTF'),
@@ -62,7 +62,7 @@ ok($conf->data->get('HAS_SNPRINTF'),
 
 $conf->replenish($serialized);
 
-########## --verbose; _evaluate_snprintf() ##########
+########## --verbose; _check() ##########
 
 ($args, $step_list_ref) = process_options( {
     argv            => [ q{--verbose} ],
@@ -75,10 +75,10 @@ $step = test_step_constructor_and_description($conf);
     my $stdout;
     my $res = q{snprintf};
     my $ret = capture(
-        sub { $step->_evaluate_snprintf($conf, $res) },
+        sub { $step->_check($conf, $res) },
         \$stdout
     );
-    ok($ret, "_evaluate_snprintf returned true value");
+    ok($ret, "_check returned true value");
     ok($conf->data->get('HAS_SNPRINTF'),
         "Got expected value");
 }

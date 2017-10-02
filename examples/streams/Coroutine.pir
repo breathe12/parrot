@@ -1,5 +1,5 @@
 
-=head1 Coroutine Example
+=head1 DESCRIPTION
 
 This example shows the usage of C<Stream::Coroutine>.
 
@@ -21,7 +21,7 @@ Creates a coroutine stream and dumps it.
 
 =cut
 
-.sub _main
+.sub _main :main
     .local pmc stream
     .local pmc temp
 

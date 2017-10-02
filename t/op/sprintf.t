@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2006-2010, Parrot Foundation.
+# Copyright (C) 2006-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -11,7 +11,8 @@ t/op/sprintf.t  -- sprintf tests
 
 =head1 DESCRIPTION
 
-These tests are based on C<sprintf> tests from perl 5.9.4.
+These tests are based on C<sprintf> tests from perl 5.9.4
+with additional tests from perl6 F<S32-str/sprintf.t>
 
 Tests C<sprintf>, excluding handling of 64-bit integers or long
 doubles (if supported), of machine-specific short and long
@@ -56,7 +57,7 @@ tag C<all> is allowed for todo tests that should fail on any system.
 =cut
 
 
-.const int TESTS = 308
+.const int TESTS = 311
 
 #.loadlib 'sys_ops'
 #.loadlib 'io_ops'
@@ -249,7 +250,7 @@ tag C<all> is allowed for todo tests that should fail on any system.
     .local string message
     get_results '0', exception
     message = exception
-    $I0 = index message, 'is not a valid sprintf format'
+    $I0 = index message, 'is not valid in sprintf format sequence'
     if $I0 == -1 goto other_error
     $I0 = index expected, ' INVALID'
     if $I0 == -1 goto bad_error
@@ -296,6 +297,18 @@ tag C<all> is allowed for todo tests that should fail on any system.
     todo_info[153] = '%hf should be rejected'
     todo_info[187] = '%h alone is invalid'
     todo_info[191] = '%l alone is invalid'
+
+    # [GH #832] %+u fails on mingw only
+    load_bytecode 'config.pbc'
+    $P1 = _config()
+    .local string osname, gccversion
+    osname = $P1['osname']
+    gccversion = $P1['gccversion']
+    ne osname, 'MSWin32', mingw
+    eq gccversion, '', mingw
+    todo_info[217] = '%+u prints + on mingw [GH #832]'
+
+  mingw:
     todo_info[223] = '%v alone is invalid, but a valid parrot extension'
     todo_info[304] = 'undecided'
     todo_info[305] = 'undecided'
@@ -350,7 +363,7 @@ tag C<all> is allowed for todo tests that should fail on any system.
     local_branch jmpstack,  set_skip_loop
 
     skip_info[114] = 'harness needs support for * modifier'
-    skip_info[144] = 'perl5 expresssion as test value'
+    skip_info[144] = 'perl5 expression as test value'
     skip_info[131] = 'harness needs support for * modifier'
     skip_info[141] = 'harness needs support for * modifier'
     skip_info[161] = 'harness needs support for * modifier'

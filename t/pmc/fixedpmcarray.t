@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -16,13 +16,12 @@ out-of-bounds test. Checks INT and PMC keys.
 
 =cut
 
+.include 'except_types.pasm'
+
 .sub main :main
     .include 'test_more.pir'
-    plan(83)
+    plan(87)
     test_setting_array_size()
-    test_assign_from_another()
-    test_assign_self()
-    test_assign_non_array()
     test_resize_exception()
     test_truthiness()
     test_tt991()
@@ -39,6 +38,7 @@ out-of-bounds test. Checks INT and PMC keys.
     test_definedness()
     test_splice_oob()
     test_get_repr()
+    test_get_string()
     test_elements()
     test_equality()
     test_multi_keys()
@@ -47,6 +47,13 @@ out-of-bounds test. Checks INT and PMC keys.
     test_exists()
     test_new_style_init()
     test_invalid_init_tt1509()
+.end
+
+.sub exists_out_of_bounds
+    .local pmc fpa
+    fpa = new ['FixedPMCArray']
+    fpa = 5
+    $I0 = exists fpa[5]
 .end
 
 .sub test_exists
@@ -64,6 +71,9 @@ out-of-bounds test. Checks INT and PMC keys.
     fpa[$P1] = 99
     $I0 = exists fpa[$P1]
     ok($I0,'FixedPMCArray element existence')
+
+    .const 'Sub' out_of_bounds = 'exists_out_of_bounds'
+    throws_type(out_of_bounds, .EXCEPTION_OUT_OF_BOUNDS, 'exists ouf of bounds')
 .end
 
 .sub test_sort
@@ -170,6 +180,22 @@ out-of-bounds test. Checks INT and PMC keys.
     is_deeply(fpa, test3 )
 .end
 
+.sub cannot_auto_num
+    $P0 = new ['FixedPMCArray']
+    $P0 = 1
+    $P0[0;0] = 1.2
+.end
+
+.sub cannot_auto_pmc
+    .local pmc matrix, row, value
+    matrix = new ['FixedPMCArray'], 1
+    #row = new ['FixedPMCArray'], 1
+    #matrix[0] = row
+    value = new ['Integer']
+    matrix[0;0] = value
+    ok(1, "Check")
+.end
+
 .sub test_multi_keys
     .local pmc    matrix, row
     .local pmc    elem_in_pmc
@@ -235,6 +261,16 @@ out-of-bounds test. Checks INT and PMC keys.
     elem_out_string = matrix[0;0]
     is(elem_out_string,128)
 
+    .const 'Sub' cannot_auto_num = 'cannot_auto_num'
+    throws_type(cannot_auto_num, .EXCEPTION_INVALID_OPERATION, 'Autovivification of nested arrays fails - num')
+
+    .const 'Sub' cannot_auto_pmc = 'cannot_auto_pmc'
+    throws_type(cannot_auto_pmc, .EXCEPTION_INVALID_OPERATION, 'Autovivification of nested arrays fails - pmc')
+
+    null $P1
+    matrix[0] = $P1
+    elem_out_pmc = matrix[0; 0]
+    is_null(elem_out_pmc, 'Attempt to recurse null element gives null')
 .end
 
 .sub test_equality
@@ -273,6 +309,9 @@ out-of-bounds test. Checks INT and PMC keys.
 
     is(fpa1,fpa2)
 
+    .local pmc nofpa
+    nofpa = new ['FixedStringArray']
+    isnt(fpa1, nofpa, 'Not equal to a different type')
 .end
 
 .sub test_elements
@@ -306,19 +345,27 @@ out-of-bounds test. Checks INT and PMC keys.
     .local string s, aux
     s = get_repr_fpa_n(0)
     aux = get_repr_fpa_n(1)
-    concat s, aux
+    s = concat s, aux
     aux = get_repr_fpa_n(2)
-    concat s, aux
+    s = concat s, aux
     aux = get_repr_fpa_n(3)
-    concat s, aux
+    s = concat s, aux
     substring(s,'()(0)(0, 1)(0, 1, 2)','get_repr')
 .end
 
 .sub get_repr_fpa_n
     .param int n
+    .local pmc fpa
+    .local string s
+    fpa = fpa_n(n)
+    s = get_repr fpa
+    .return(s)
+.end
+
+.sub fpa_n
+    .param int n
     .local int i
     .local pmc fpa, p
-    .local string s
     fpa = new ['FixedPMCArray']
     fpa = n
     i = 0
@@ -329,13 +376,29 @@ next:
     inc i
     goto next
 done:
-    s = get_repr fpa
-    .return(s)
+    .return (fpa)
+.end
+
+.sub test_get_string
+    .local string s, aux
+    .local pmc a
+    a = fpa_n(0)
+    s = a
+    a = fpa_n(1)
+    aux = a
+    s = concat s, aux
+    a = fpa_n(2)
+    aux = a
+    s = concat s, aux
+    a = fpa_n(3)
+    aux = a
+    s = concat s, aux
+    substring(s,'0123','get_string')
 .end
 
 .sub test_splice_oob
-    throws_substring(<<'CODE','FixedPMCArray: index out of bounds','splice oob, offset 0')
-    .sub main
+    throws_substring(<<'CODE','index out of bounds','splice oob, offset 0')
+    .sub main :main
         .local pmc fpa
         fpa = new ['FixedPMCArray']
         fpa = 5
@@ -346,8 +409,8 @@ done:
         splice fpa, nil, 0, 6
     .end
 CODE
-    throws_substring(<<'CODE','FixedPMCArray: index out of bounds','splice oob, big offset')
-    .sub main
+    throws_substring(<<'CODE','index out of bounds','splice oob, big offset')
+    .sub main :main
         .local pmc fpa
         fpa = new ['FixedPMCArray']
         fpa = 5
@@ -392,7 +455,7 @@ CODE
 
 .sub test_get_uninitialized
     throws_substring(<<'CODE','Null PMC access in name','get uninitialized')
-    .sub main
+    .sub main :main
         .local pmc arr1
         arr1 = new ['FixedPMCArray']
         arr1 = 2005
@@ -470,39 +533,38 @@ CODE
 .end
 
 .sub test_oob_elem
-    throws_substring(<<'CODE','FixedPMCArray: index out of bounds!','set out-of-bounds index')
-        .sub main
+    throws_substring(<<'CODE','index out of bounds','set out-of-bounds index')
+        .sub main :main
             new $P0, ['FixedPMCArray']
-            set $P0, 1
-            set $P0[1], -7
+            $P0 = 1
+            $P0[1] = -7
         .end
 CODE
-    throws_substring(<<'CODE','FixedPMCArray: index out of bounds!','set out-of-bounds index')
-        .sub main
+    throws_substring(<<'CODE','index out of bounds','set out-of-bounds index')
+        .sub main :main
             new $P0, ['FixedPMCArray']
-            set $P0, 1
-            set $I0, $P0[1]
+            $P0 = 1
+            $I0 = $P0[1]
         .end
 CODE
-
+    throws_substring(<<'CODE','index out of bounds','set out-of-bounds index')
+        .sub main :main
+            new $P0, ['FixedPMCArray']
+            $P0 = 1
+            $I0 = $P0[-2]
+        .end
+CODE
 .end
 
 .sub test_negative_index
-    throws_substring(<<'CODE','FixedPMCArray: index out of bounds!','set negative index')
-.sub main
     new $P0, ['FixedPMCArray']
-    set $P0, 1
-    set $P0[-1], -7
-.end
-CODE
-    throws_substring(<<'CODE','FixedPMCArray: index out of bounds!','get negative index')
-.sub main
-    new $P0, ['FixedPMCArray']
-    set $P0, 1
-    set $I0, $P0[-1]
-.end
-CODE
+    $P0 = 1
+    $I0 = $P0[-1]
+    ok(1, 'get negative index')
 
+    set $P0[-1], -7
+    set $I0, $P0[-1]
+    is($I0, -7, 'set negative index')
 .end
 
 .sub test_setting_second_elem
@@ -548,8 +610,8 @@ CODE
 .end
 
 .sub test_tt991
-    throws_substring(<<'CODE','FixedPMCArray: Cannot set array size to a negative number','cannot create a negative length array')
-        .sub main
+    throws_substring(<<'CODE','illegal argument','cannot create a negative length array')
+        .sub main :main
             new $P0, ['FixedPMCArray']
             set $P0, -1
         .end
@@ -599,8 +661,8 @@ CODE
 .end
 
 .sub test_resize_exception
-    throws_substring(<<'CODE',"FixedPMCArray: Can't resize",'cannot resize FixedPMCArray')
-        .sub main
+    throws_substring(<<'CODE',"Can't resize",'cannot resize FixedPMCArray')
+        .sub main :main
             new $P0, ['FixedPMCArray']
             set $I0,$P0
             set $P0,1
@@ -609,49 +671,18 @@ CODE
 CODE
 
     throws_substring(<<'CODE',"set_number_native() not implemented in class 'FixedPMCArray'", 'cannot use float as length to FixedPMCArray')
-        .sub main
+        .sub main :main
             new $P0, ['FixedPMCArray']
             set $P0, 42.0
         .end
 CODE
 
     throws_substring(<<'CODE',"set_string_native() not implemented in class 'FixedPMCArray'", 'cannot use string as length to FixedPMCArray')
-        .sub main
+        .sub main :main
             new $P0, ['FixedPMCArray']
             set $P0,"GIGO"
         .end
 CODE
-.end
-
-.sub test_assign_non_array
-    throws_substring(<<'CODE', "Can't set self from this type",'assign from non-array')
-    .sub main
-        .local pmc arr, other
-        .local int n
-        arr = new ['FixedPMCArray']
-        other = new ['Integer']
-        assign arr, other
-    .end
-CODE
-.end
-
-.sub test_assign_self
-    .local pmc arr
-    arr = new ['FixedPMCArray']
-    assign arr, arr
-    ok(1, 'Can assign FixedPMCArray to itself')
-.end
-
-.sub test_assign_from_another
-    .local pmc arr1, arr2
-    .local int n
-    arr1 = new ['FixedPMCArray']
-    arr1 = 32
-    arr2 = new ['FixedPMCArray']
-    arr2 = 15
-    assign arr1, arr2
-    n = arr1
-    is(n,15,'assigning to FixedPMCArray from another FixedPMCArray')
 .end
 
 .sub test_setting_array_size
@@ -684,14 +715,14 @@ CODE
 .end
 
 .sub test_invalid_init_tt1509
-    throws_substring(<<'CODE', 'Cannot set array size to a negative number (-10)', 'New style init does not dump core for negative array lengths')
-    .sub main
+    throws_substring(<<'CODE', 'illegal argument', 'New style init does not dump core for negative array lengths')
+    .sub main :main
         $P0 = new ['FixedPMCArray'], -10
     .end
 CODE
 
-    throws_substring(<<'CODE', 'Cannot set array size to a negative number (-10)', 'New style init (key constant) does not dump core for negative array lengths')
-    .sub main
+    throws_substring(<<'CODE', 'illegal argument', 'New style init (key constant) does not dump core for negative array lengths')
+    .sub main :main
         $P0 = new 'FixedPMCArray', -10
     .end
 CODE

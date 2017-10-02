@@ -12,18 +12,20 @@
 #define PARROT_THR_WINDOWS_H_GUARD
 
 #  undef FASTCALL
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
 #  include <process.h>
 #  include <limits.h>
+#  undef CONST
 
 typedef CRITICAL_SECTION Parrot_mutex;
-typedef struct Windows_cond
-  {
+typedef struct Windows_cond {
     HANDLE m_hSema;
     LONG m_lWaiters;
-  } Parrot_cond;
+} Parrot_cond;
 typedef HANDLE Parrot_thread;
 
-#  define MUTEX_INIT(m) InitializeCriticalSection((PCRITICAL_SECTION)&(m))
+#  define MUTEX_INIT(m) InitializeCriticalSectionAndSpinCount((PCRITICAL_SECTION)&(m), 4000)
 #  define MUTEX_DESTROY(m) DeleteCriticalSection((PCRITICAL_SECTION)&(m))
 
 #  define COND_INIT(c) \
@@ -46,7 +48,7 @@ typedef HANDLE Parrot_thread;
        --(c).m_lWaiters; \
      } while (0)
 
-#  define COND_TIMED_WAIT(c, m, t) \
+#  define COND_TIMED_WAIT(c, m, t, rc) \
      do { \
        FLOATVAL now; \
        time_t sec; \
@@ -60,9 +62,12 @@ typedef HANDLE Parrot_thread;
          ++(c).m_lWaiters; \
          UNLOCK(m); \
          diff = (DWORD)(((t)->tv_sec - sec)*1000L + ((t)->tv_nsec - nsec)/1000000L); \
-         WaitForSingleObject((c).m_hSema, diff); \
+         (rc) = WaitForSingleObject((c).m_hSema, diff) != WAIT_OBJECT_0; \
          LOCK(m); \
          --(c).m_lWaiters; \
+       } \
+       else { \
+         (rc) = 1; \
        } \
      } while (0)
 
@@ -116,13 +121,6 @@ typedef HANDLE Parrot_thread;
 #  define CLEANUP_POP(a)
 
 typedef void (*Cleanup_Handler)(void *);
-
-#ifndef PARROT_HAS_TIMESPEC
-struct timespec {
-    time_t tv_sec;
-    long tv_nsec;
-};
-#endif /* PARROT_HAS_TIMESPEC */
 
 #endif /* PARROT_THR_WINDOWS_H_GUARD */
 

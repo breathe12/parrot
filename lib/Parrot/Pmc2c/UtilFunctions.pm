@@ -1,4 +1,4 @@
-# Copyright (C) 2007-2008, Parrot Foundation.
+# Copyright (C) 2007-2012, Parrot Foundation.
 
 package Parrot::Pmc2c::UtilFunctions;
 use strict;
@@ -11,6 +11,8 @@ our @EXPORT_OK = qw( count_newlines return_statement dont_edit dynext_load_code
     c_code_coda slurp spew filename
     args_from_parameter_list
     passable_args_from_parameter_list
+    gen_multi_name
+    trim
 );
 
 =head1 NAME
@@ -19,7 +21,7 @@ Parrot::Pmc2c::UtilFunctions
 
 =head1 DESCRIPTION
 
-Various utility functions used in PMC to C transformations.  All functionas
+Various utility functions used in PMC to C transformations.  All functions
 are exported on request only.
 
 =head1 SUBROUTINES
@@ -70,7 +72,7 @@ Returns the number of newlines (C<\n>) in C<$string>.
 =cut
 
 sub count_newlines {
-    return scalar $_[0] =~ tr/\n//;
+    return $_[0] =~ tr/\n//;
 }
 
 =item C<dont_edit($pmcfile)>
@@ -130,41 +132,36 @@ This function is exported.
 sub dynext_load_code {
     my ( $classname, %classes ) = @_;
     my $lc_libname = lc $classname;
+    my $type = "dynpmc_class_";
     my $cout;
 
+    while ( my ( $class, $info ) = each %classes ) {
+      next if $info->{flags}{no_init};
+      $cout .= <<"EOC";
+INTVAL ${type}${class};
+EOC
+    }
+
     $cout .= <<"EOC";
+
 /*
  * This load function will be called to do global (once) setup
  * whatever is needed to get this extension running
  */
 
-EOC
-    $cout .= <<"EOC";
-
-PARROT_DYNEXT_EXPORT Parrot_PMC Parrot_lib_${lc_libname}_load(PARROT_INTERP); /* don't warn */
 PARROT_DYNEXT_EXPORT Parrot_PMC Parrot_lib_${lc_libname}_load(PARROT_INTERP)
 {
     Parrot_String whoami;
     Parrot_PMC    pmc;
-EOC
-    while ( my ( $class, $info ) = each %classes ) {
-        next if $info->{flags}{no_init};
-        $cout .= <<"EOC";
-    Parrot_Int type${class};
-EOC
-    }
-    $cout .= <<"EOC";
     int pass;
 
     /* create a library PMC */
-    pmc = Parrot_pmc_new_constant(interp, enum_class_ParrotLibrary);
-
-    /* TODO: stuff some info into this PMC's props */
+    pmc = Parrot_pmc_new(interp, enum_class_ParrotLibrary);
 
     /* for all PMCs we want to register: */
 EOC
     while ( my ( $class, $info ) = each %classes ) {
-        my $lhs = $info->{flags}{no_init} ? "" : "type$class = ";
+        my $lhs = $info->{flags}{no_init} ? "" : "${type}${class} = ";
         $cout .= <<"EOC";
     whoami = CONST_STRING_GEN(interp, "$class");
     ${lhs}Parrot_pmc_register_new_type(interp, whoami);
@@ -180,7 +177,7 @@ EOC
 
     for my $class (@init_order) {
         $cout .= <<"EOC";
-        Parrot_${class}_class_init(interp, type$class, pass);
+        Parrot_${class}_class_init(interp, ${type}${class}, pass);
 EOC
     }
     $cout .= <<"EOC";
@@ -298,6 +295,23 @@ sub filename {
     $filename =~ s/\.\w+$/.pmc/          if ( $type eq ".pmc" );
     return $filename;
 }
+
+sub gen_multi_name {
+    my ($name, $cache) = @_;
+
+    return $cache->{$name} if exists $cache->{$name};
+    my $count              = keys %$cache;
+    return $cache->{$name} = "mfl_$count";
+}
+
+# Perl trim function to remove whitespace from the start and end of the string
+sub trim {
+    my $string = shift;
+    $string    =~ s/^\s+//;
+    $string    =~ s/\s+$//;
+    return $string;
+}
+
 1;
 
 # Local Variables:

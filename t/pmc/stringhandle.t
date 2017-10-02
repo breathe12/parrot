@@ -1,12 +1,12 @@
 #!perl
-# Copyright (C) 2006-2010, Parrot Foundation.
+# Copyright (C) 2006-2016, Parrot Foundation.
 
 use strict;
 use warnings;
 use lib qw( . lib ../lib ../../lib );
 
 use Test::More;
-use Parrot::Test tests => 25;
+use Parrot::Test tests => 27;
 
 =head1 NAME
 
@@ -36,7 +36,7 @@ OUT
 pir_output_is( <<"CODE", <<'OUT', 'open and close - synchronous' );
 .sub 'test' :main
     \$P1 = new ['StringHandle']
-    \$P1.'open'('README')
+    \$P1.'open'('README.pod')
     say 'ok 1 - \$P1.open(\$S1)'
 
     \$P1.'close'()
@@ -111,20 +111,20 @@ CODE
 OUT
 
 SKIP: {
-    skip 'no asynch calls yet' => 1;
+    skip 'no async calls yet' => 1;
 
     pir_output_is( <<'CODE', <<'OUT', 'open and close - asynchronous' );
 .sub 'test' :main
-    $P1 = # TT #1204 create a callback here
+    $P1 = # GH #535 create a callback here
     $P0 = new ['StringHandle']
 
-    $P0.'open'('README')
+    $P0.'open'('README.pod')
     say 'ok 1 - $P0.open($S1)'
 
     $P0.'close'()
     say 'ok 2 - $P0.close($P1)'
 
-    $P0.'open'('README', 'rw')
+    $P0.'open'('README.pod', 'rw')
     say 'ok 3 - $P0.open($S1, $S2)'
 
     $P0.'close'()
@@ -147,22 +147,23 @@ pir_output_is(
     <<'CODE', <<'OUT', 'read - synchronous' );
 .sub 'test' :main
     $P0 = new ['StringHandle']
-    $P0.'open'('README', 'w')
+    $P0.'open'('README.pod', 'w')
 
-    $P0.'print'("This is Parrot, version")
+    $P0.'print'("# Copyright (C) 2001-2012, Parrot Foundation.")
 
     $P0.'close'()
 
-    $P0.'open'('README')
+    $P0.'open'('README.pod')
 
-    $S0 = $P0.'read'(14) # bytes
-    if $S0 == 'This is Parrot' goto ok_1
+    $S0 = $P0.'read'(15) # bytes
+    if $S0 == '# Copyright (C)' goto ok_1
     print 'not '
   ok_1:
     say 'ok 1 - $S0 = $P1.read($I2)'
 
-    $S0 = $P0.'read'(9)  # bytes
-    if $S0 == ', version' goto ok_2
+    $S0 = $P0.'read'(12)  # throw away bytes
+    $S0 = $P0.'read'(17)  # bytes
+    if $S0 == 'Parrot Foundation' goto ok_2
     print 'not '
   ok_2:
     say 'ok 2 - $S0 = $P1.read($I2) # again on same stream'
@@ -176,21 +177,22 @@ pir_output_is(
     <<'CODE', <<'OUT', 'read opcode' );
 .sub 'test' :main
     $P0 = new ['StringHandle']
-    $P0.'open'('README', 'w')
+    $P0.'open'('README.pod', 'w')
 
-    print $P0, "This is Parrot, version"
+    print $P0, "# Copyright (C) 2001-2012, Parrot Foundation."
     $P0.'close'()
 
-    $P0.'open'('README')
+    $P0.'open'('README.pod')
 
-    $S0 = $P0.'read'(14) # bytes
-    if $S0 == 'This is Parrot' goto ok_1
+    $S0 = $P0.'read'(15) # bytes
+    if $S0 == '# Copyright (C)' goto ok_1
     print 'not '
   ok_1:
     say 'ok 1 - $S0 = $P1.read($I2)'
 
-    $S0 = $P0.'read'(9)  # bytes
-    if $S0 == ', version' goto ok_2
+    $S0 = $P0.'read'(12)  # throw away bytes
+    $S0 = $P0.'read'(17)  # bytes
+    if $S0 == 'Parrot Foundation' goto ok_2
     print 'not '
   ok_2:
     say 'ok 2 - $S0 = $P1.read($I2) # again on same stream'
@@ -247,7 +249,7 @@ ok 5 - read integer back from file
 ok 6 - read string back from file
 OUT
 
-pir_output_is( <<'CODE', <<'OUT', 'puts' );
+pir_output_is( <<'CODE', <<'OUT', 'print errors', todo => 'no errors until 8.3.0' );
 .include 'except_types.pasm'
 .sub 'test' :main
     .local pmc sh, eh
@@ -257,10 +259,10 @@ pir_output_is( <<'CODE', <<'OUT', 'puts' );
     eh.'handle_types'(.EXCEPTION_PIO_ERROR)
     push_eh eh
 
-    # puts to SH not opened
+    # print to SH not opened
     result = 0
     set_label eh, handle1
-    sh.'puts'('something')
+    sh.'print'('something')
     result = 1
     goto done1
 handle1:
@@ -268,11 +270,49 @@ handle1:
 done1:
     say result
 
-    # puts to SH opened for reading
+    # print to SH opened for reading throws an error
     result = 0
     set_label eh, handle2
     sh.'open'('mockname', 'r')
-    sh.'puts'('something')
+    sh.'print'('something')
+    result = 1
+    goto done2
+handle2:
+    finalize eh
+done2:
+    say result
+.end
+CODE
+0
+0
+OUT
+
+pir_output_is( <<'CODE', <<'OUT', 'read/write mode errors', todo => 'no errors until 8.3.0' );
+.include 'except_types.pasm'
+.sub 'test' :main
+    .local pmc sh, eh
+    .local int result
+    sh = new ['StringHandle']
+    eh = new ['ExceptionHandler']
+    eh.'handle_types'(.EXCEPTION_PIO_ERROR)
+    push_eh eh
+
+    # read from SH not yet opened
+    result = 0
+    set_label eh, handle1
+    $S0 = sh.'read'(1)
+    result = 1
+    goto done1
+handle1:
+    finalize eh
+done1:
+    say result
+
+    # read from SH opened for writing throws an error
+    result = 0
+    set_label eh, handle2
+    sh.'open'('mockname', 'w')
+    result = sh.'peek'()
     result = 1
     goto done2
 handle2:
@@ -379,9 +419,9 @@ ok 1 - read 10,000 lines
 OUT
 
 
-# TT #1204 test reading long chunks, eof, and across newlines
+# GH #535 test reading long chunks, eof, and across newlines
 
-# TT #1204 pir_output_is( <<'CODE', <<'OUT', 'print, read, and readline - asynchronous', todo => 'not yet implemented' );
+# GH #535 pir_output_is( <<'CODE', <<'OUT', 'print, read, and readline - asynchronous', todo => 'not yet implemented' );
 
 # L<PDD22/I\/O PMC API/=item record_separator>
 pir_output_is( <<'CODE', <<'OUT', 'record_separator', todo => 'not yet implemented' );
@@ -452,9 +492,9 @@ ok 2 - $S0 = $P1.buffer_type() # line-buffered
 ok 3 - $S0 = $P1.buffer_type() # full-buffered
 OUT
 
-# TT #1204 test effects of buffer_type, not just set/get
+# GH #535 test effects of buffer_type, not just set/get
 
-# TT #1177
+# GH #458
 # L<PDD22/I\/O PMC API/=item buffer_size>
 # NOTES: try setting positive, zero, negative int
 # perform print and read ops
@@ -477,7 +517,7 @@ pir_output_is( <<"CODE", <<'OUT', 'buffer_size' );
     # The set buffer size is a minimum, the I/O subsystem may scale it upward
     # to a round block, so test that the buffer size is equal or greater than
     # the set size.
-    if \$I0 == 10 goto ok_2
+    if \$I0 >= 10 goto ok_2
     print 'not '
   ok_2:
     say 'ok 2 - \$I0 = \$P0.buffer_size() # get buffer size'
@@ -528,6 +568,8 @@ pir_output_is( <<"CODE", <<'OUT', 'encoding - read/write' );
     \$P0.'print'(1234567890)
     \$P0.'print'("\\n")
     \$S0 = iso-8859-1:"TÖTSCH"
+    \$I9 = find_encoding "utf8"
+    \$S9 = trans_encoding \$S0, \$I9
     \$P0.'print'(\$S0)
     \$P0.'close'()
 
@@ -535,14 +577,14 @@ pir_output_is( <<"CODE", <<'OUT', 'encoding - read/write' );
 
     \$S1 = \$P0.'readline'()
     if \$S1 == "1234567890\\n" goto ok_1
-print \$S1
+
     print 'not '
   ok_1:
     say 'ok 1 - \$S1 = \$P0.readline() # read with utf8 encoding on'
 
     \$S2 = \$P0.'readline'()
-    if \$S2 == \$S0 goto ok_2
-print \$S2
+    if \$S2 == \$S9 goto ok_2
+
     print 'not '
   ok_2:
     say 'ok 2 - \$S2 = \$P0.readline() # read iso-8859-1 string'
@@ -561,7 +603,7 @@ pir_output_is( <<'CODE', <<'OUT', 'mode' );
 .sub 'test' :main
     $P0 = new ['StringHandle']
 
-    $P0.'open'('README')
+    $P0.'open'('README.pod')
     $S0 = $P0.'mode'()
 
     if $S0 == 'r' goto ok_1
@@ -576,7 +618,7 @@ CODE
 ok 1 - $S0 = $P0.mode() # get read mode
 OUT
 
-pir_output_is( <<"CODE", <<"OUTPUT", "readall - closed stringhandle" );
+pir_output_is( <<"CODE", <<"OUTPUT", "readall an reopened handle" );
 .sub main :main
     \$S0 = <<"EOS"
 line 1
@@ -599,7 +641,7 @@ CODE
 ok
 OUTPUT
 
-pir_output_is( <<"CODE", <<"OUTPUT", "readall - stringhandle with null content" );
+pir_output_is( <<"CODE", <<"OUTPUT", "readall - flushed stringhandle errors", todo => 'no errors until 8.3.0' );
 .sub main :main
     .local pmc sh
     .local string s
@@ -609,16 +651,33 @@ pir_output_is( <<"CODE", <<"OUTPUT", "readall - stringhandle with null content" 
     # and that is the case we are testing here.
     # Also, ensures coverage of the flush method.
     sh.'flush'()
+    push_eh E1
+    sh.'readall'()
+    s = "error1"
+E1:
+    pop_eh
+    print '['
+    print s
+    say ']'
+
+    sh.'open'('mockname', 'r')
+    sh.'seek'(0, 0)
+    push_eh E2
     s = sh.'readall'()
+    s = "error2"
+E2:
+    pop_eh
+
     print '['
     print s
     say ']'
 .end
 CODE
+[error1]
 []
 OUTPUT
 
-pir_output_is( <<"CODE", <<"OUTPUT", "readall() - opened stringhandle" );
+pir_output_is( <<"CODE", <<"OUTPUT", "readall() - rw stringhandle" );
 .sub main :main
     \$S0 = <<"EOS"
 line 1
@@ -627,11 +686,9 @@ line 3
 EOS
     .local pmc pio, pio2
     pio = new ['StringHandle']
-    pio.'open'("temp_file", "w")
+    pio.'open'("temp_file", "rw")
     pio.'print'(\$S0)
-    pio.'close'()
-
-    pio.'open'("temp_file", "r")
+    pio.'seek'(0, 0)
     \$S1 = pio.'readall'()
     if \$S0 == \$S1 goto ok
     print "not "
@@ -643,7 +700,7 @@ ok
 OUTPUT
 
 pir_output_is( <<'CODE', <<"OUTPUT", "is_closed" );
-.sub main
+.sub main :main
     .local pmc sh
     .local int i
     sh = new ['StringHandle']
@@ -659,7 +716,7 @@ CODE
 OUTPUT
 
 pir_output_is( <<'CODE', <<'OUTPUT', 'StringHandle is not a tty' );
-.sub main
+.sub main :main
     .local pmc sh
     .local int i
     sh = new ['StringHandle']
@@ -671,25 +728,34 @@ CODE
 0
 OUTPUT
 
-pir_output_is( <<"CODE", <<"OUTPUT", "readall() - utf8 on closed stringhandle" );
-.sub 'main'
-    .local pmc ifh
+pir_output_is( <<"CODE", <<"OUTPUT", "readall() - on closed stringhandle", todo => 'no errors until 8.3.0' );
+.include 'except_types.pasm'
+.sub 'main' :main
+    .local pmc ifh, eh
+    .local int result
     ifh = new ['StringHandle']
     ifh.'encoding'('utf8')
 
-    \$S0 = ifh.'readall'('temp_file')
+    eh = new ['ExceptionHandler']
+    eh.'handle_types'(.EXCEPTION_PIO_ERROR)
+    push_eh eh
+    result = 0
+    set_label eh, handle1
+    \$S0 = ifh.'readall'()
+    result = 1
+    goto done1
+handle1:
+    finalize eh
+done1:
 
-    \$I0 = encoding \$S0
-    \$S1 = encodingname \$I0
-
-    say \$S1
+    say result
 .end
 CODE
-utf8
+0
 OUTPUT
 
 pir_output_is( <<"CODE", <<"OUTPUT", "readall() - utf8 on opened stringhandle" );
-.sub 'main'
+.sub 'main' :main
     .local pmc ifh
     ifh = new ['StringHandle']
     ifh.'encoding'('utf8')
@@ -707,7 +773,7 @@ utf8
 OUTPUT
 
 pir_output_is( <<'CODE', <<'OUTPUT', "clone an uninitialized stringhandle" );
-.sub 'main'
+.sub 'main' :main
     $P0 = new ['StringHandle']
     $P1 = clone $P0
     say "ok"
@@ -716,7 +782,54 @@ CODE
 ok
 OUTPUT
 
-# TT #1178
+# GH 1011 FileHandle analog methods
+pir_output_is( <<'CODE', <<"OUTPUT", "seek/tell/peek stringhandle" );
+.sub 'main' :main
+    .local pmc ifh
+    ifh = new ['StringHandle']
+    ifh.'encoding'('utf8')
+    ifh.'open'('README.pod', 'rw')
+    ifh.'puts'('# Copyright (C) 2001-2014, Parrot Foundation.')
+
+    ifh.'seek'(0, 27)
+    $S0 = ifh.'read'(17)
+    if $S0 == 'Parrot Foundation' goto ok_1
+    print 'not '
+    print $S0
+  ok_1:
+    say 'ok 1 - seek 0,28'
+
+    $I0 = ifh.'tell'()
+    if $I0 == 45 goto ok_2
+    print 'not '
+    print $I0
+  ok_2:
+    say 'ok 2 - tell'
+
+    $S0 = ifh.'peek'() # one byte
+    if $S0 == '.' goto ok_3
+    print 'not '
+    print $S0
+  ok_3:
+    say 'ok 3 - peek value'
+
+    $I0 = ifh.'tell'()
+    if $I0 == 45 goto ok_4
+    print 'not '
+    print $I0
+  ok_4:
+    say 'ok 4 - peek does not advance'
+    ifh.'close'()
+.end
+CODE
+ok 1 - seek 0,28
+ok 2 - tell
+ok 3 - peek value
+ok 4 - peek does not advance
+OUTPUT
+
+
+# GH #465
 # L<PDD22/I\/O PMC API/=item get_fd>
 # NOTES: this is going to be platform dependent
 

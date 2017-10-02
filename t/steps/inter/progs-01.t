@@ -1,5 +1,5 @@
 #! perl
-# Copyright (C) 2007, Parrot Foundation.
+# Copyright (C) 2007-2015, Parrot Foundation.
 # inter/progs-01.t
 
 use strict;
@@ -15,7 +15,7 @@ use Parrot::Configure::Test qw(
     test_step_constructor_and_description
 );
 use Tie::Filehandle::Preempt::Stdin;
-use IO::CaptureOutput qw| capture |;
+use Parrot::Configure::Utils qw| capture |;
 
 =for hints_for_testing Testing and refactoring of inter::progs should
 entail understanding of issues discussed in
@@ -49,6 +49,7 @@ my ($stdout, $debug, $debug_validity);
 foreach my $p (
     qw|
         cc
+        cxx
         link
         ld
         ccflags
@@ -57,7 +58,6 @@ foreach my $p (
         arflags
         ldflags
         libs
-        cxx
     |
     )
 {
@@ -71,8 +71,7 @@ isa_ok( $object, 'Tie::Filehandle::Preempt::Stdin' );
 
 capture( sub {
     my $ask = inter::progs::_prepare_for_interactivity($conf);
-    my $cc;
-    ($conf, $cc) = inter::progs::_get_programs($conf, $ask);
+    inter::progs::_get_programs($conf, $ask);
     $debug = inter::progs::_get_debug($conf, $ask);
     $debug_validity = inter::progs::_is_debug_setting_valid($debug);
 }, \$stdout);

@@ -13,7 +13,7 @@ use Parrot::Configure::Step::Test;
 use Parrot::Configure::Test qw(
     test_step_constructor_and_description
 );
-use IO::CaptureOutput 'capture';
+use Parrot::Configure::Utils 'capture';
 
 ########### regular ###########
 
@@ -92,7 +92,7 @@ $d_neg_0 = '-0';
         sub {
             $has_neg_0 = $step->_evaluate_cc_run(
                 $conf, $d_neg_0, $orig_has_neg_0
-            ),
+            );
         },
         \$stdout,
     );
@@ -109,7 +109,7 @@ $d_neg_0 = '0';
         sub {
             $has_neg_0 = $step->_evaluate_cc_run(
                 $conf, $d_neg_0, $orig_has_neg_0
-            ),
+            );
         },
         \$stdout,
     );

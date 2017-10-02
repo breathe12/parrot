@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2001-2009, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -16,7 +16,7 @@ out-of-bounds test. Checks INT and PMC keys.
 
 =cut
 
-.const int TESTS = 55
+.const int TESTS = 78
 .const num PRECISION = 1e-6
 
 .sub 'test' :main
@@ -49,6 +49,8 @@ out-of-bounds test. Checks INT and PMC keys.
     check_interface()
     get_iter()
     'clone'()
+    test_sort()
+    method_reverse()
 .end
 
 .sub 'creation'
@@ -130,43 +132,45 @@ out-of-bounds test. Checks INT and PMC keys.
     $P0 = new ['ResizableFloatArray']
     $P0 = 1
 
-    push_eh setting_negative_index_handler
-    $P0[-1] = -7
-    pop_eh
-    nok(1, 'setting negatively indexed elements')
-    .return ()
-
-  setting_negative_index_handler:
-    ok(1, 'setting negatively indexed elements')
+    $P0[-1] = 3.7
+    $N0 = $P0[-1]
+    is($N0, 3.7, 'setting negatively indexed elements', PRECISION)
 .end
 
 .sub 'getting_negative_index'
     $P0 = new ['ResizableFloatArray']
     $P0 = 1
+    $P0[0] = 3.7
 
-    push_eh getting_negative_index_handler
-    $I0 = $P0[-1]
-    pop_eh
-    nok(1, 'getting negatively indexed elements')
-    .return ()
-
-  getting_negative_index_handler:
-    ok(1, 'getting negatively indexed elements')
+    $N0 = $P0[-1]
+    is($N0, 3.7, 'getting negatively indexed elements', PRECISION)
 .end
 
 .sub 'setting_out_of_bounds'
     $P0 = new ['ResizableFloatArray']
     $P0 = 1
 
-    $P0[1] = -7
-    ok(1, 'setting out-of-bounds elements')
+    push_eh setting_oob_handler
+    $P0[-3] = -7
+    pop_eh
+    nok(1, 'setting out of bounds elements')
+    .return ()
+
+  setting_oob_handler:
+    ok(1, 'setting out of bounds elements')
 .end
 
 .sub 'getting_out_of_bounds'
     $P0 = new ['ResizableFloatArray']
     $P0 = 1
 
-    $I0 = $P0[1]
+    push_eh getting_oob_handler
+    $I0 = $P0[-2]
+    pop_eh
+    nok(1, 'getting out of bounds elements')
+    .return ()
+
+  getting_oob_handler:
     ok(1, 'getting out-of-bounds elements')
 .end
 
@@ -456,6 +460,86 @@ out-of-bounds test. Checks INT and PMC keys.
 
   clone_evil:
     nok(0, 'clone made an evil clone')
+.end
+
+.sub test_sort
+    .local pmc array
+    array = new ['ResizableFloatArray'], 4
+    set array[0], 10.2
+    set array[1], 3.0
+    set array[2], 5.85
+    set array[3], -1.7
+    array.'sort'()
+    $N0 = array[0]
+    is($N0, -1.7, 'sort works - 1st element correct')
+    $N1 = array[1]
+    is($N1, 3.0, 'sort works - 2nd element correct')
+    $N2 = array[2]
+    is($N2, 5.85, 'sort works - 3rd element correct')
+    $N3 = array[3]
+    is($N3, 10.2, 'sort works - 4th element correct')
+    push array, 3.5
+    array.'sort'()
+    $N0 = array[0]
+    is($N0, -1.7, 'sort works - 1st element correct after push')
+    $N1 = array[1]
+    is($N1, 3.0, 'sort works - 2nd element correct after push')
+    $N2 = array[2]
+    is($N2, 3.5, 'sort works - 3rd element correct after push')
+    $N3 = array[3]
+    is($N3, 5.85, 'sort works - 4th element correct after push')
+    $N4 = array[4]
+    is($N4, 10.2, 'sort works - 5th element correct after push')
+    unshift array, 7.2
+    array.'sort'()
+    $N0 = array[0]
+    is($N0, -1.7, 'sort works - 1st element correct after unshift')
+    $N1 = array[1]
+    is($N1, 3.0, 'sort works - 2nd element correct after unshift')
+    $N2 = array[2]
+    is($N2, 3.5, 'sort works - 3rd element correct after unshift')
+    $N3 = array[3]
+    is($N3, 5.85, 'sort works - 4th element correct after unshift')
+    $N4 = array[4]
+    is($N4, 7.2, 'sort works - 5th element correct after unshift')
+    $N5 = array[5]
+    is($N5, 10.2, 'sort works - 6th element correct after unshift')
+.end
+
+.sub method_reverse
+    .local pmc array
+    array = new ['ResizableFloatArray']
+    array."reverse"()
+    $I0 = elements array
+    is($I0, 0, "method_reverse - reverse of empty array")
+    push array, 3.
+    array."reverse"()
+    $S0 = array[0]
+    is($S0, "3", "method_reverse - reverse of array with one element")
+    push array, 1.
+    array."reverse"()
+    array."reverse"()
+    array."reverse"()
+    $S0 = array[0]
+    is($S0, "1", "method_reverse - reverse of array with two elements")
+    $S0 = array[1]
+    is($S0, "3", "method_reverse - reverse of array with two elements second element")
+    push array, 4.5
+    array."reverse"()
+    push array, 5.
+    array."reverse"()
+    $S0 = join "", array
+    is($S0, "5134.5", "method_reverse - four elements")
+    array."reverse"()
+    $S0 = join "", array
+    is($S0, "4.5315", "method_reverse - four elements second reverse")
+    push array, 6.
+    array."reverse"()
+    $S0 = join "", array
+    is($S0, "65134.5", "method_reverse - five elements")
+    array."reverse"()
+    $S0 = join "", array
+    is($S0, "4.53156", "method_reverse - five elements second reverse")
 .end
 
 # Local Variables:

@@ -1,11 +1,17 @@
 #! perl
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2015, Parrot Foundation.
 
 use strict;
 use warnings;
 use lib qw( . lib ../lib ../../lib );
 use Test::More;
 use Parrot::Test;
+use Parrot::Config;
+use File::Spec::Functions;
+
+my $parrot_config = "parrot_config" . $PConfig{o};
+
+plan skip_all => 'src/parrot_config.o does not exist' unless -e catfile("src", $parrot_config);
 
 plan tests => 2;
 
@@ -30,18 +36,16 @@ Hacked from t/src/basics.t
 c_output_is( <<'CODE', <<'OUTPUT', "print_pbc_location" );
 
 #include <parrot/parrot.h>
-#include <parrot/embed.h>
 
 int
 main(int argc, const char* argv[])
 {
-    Parrot_Interp interp = Parrot_new(NULL);
+    Parrot_Interp interp = Parrot_interp_new(NULL);
     int error_val;
 
     if (interp) {
-        print_pbc_location(interp);
-
-        Parrot_destroy(interp);
+        Parrot_print_pbc_location(interp);
+        Parrot_interp_destroy(interp);
     }
     return 0;
 }
@@ -52,12 +56,11 @@ OUTPUT
 c_output_is( <<'CODE', <<'OUTPUT', "Parrot_warn" );
 
 #include <parrot/parrot.h>
-#include <parrot/embed.h>
 
 int
 main(int argc, const char* argv[])
 {
-    Parrot_Interp interp = Parrot_new(NULL);
+    Parrot_Interp interp = Parrot_interp_new(NULL);
     int error_val;
 
     if (interp) {
@@ -85,7 +88,7 @@ main(int argc, const char* argv[])
         error_val = Parrot_warn(interp, 0, "eek"); /* should return error */
         Parrot_io_eprintf(interp, "%d\n", error_val);
 
-        Parrot_destroy(interp);
+        Parrot_interp_destroy(interp);
    }
    return 0;
 }

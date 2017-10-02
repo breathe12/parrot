@@ -5,7 +5,7 @@ use strict;
 use warnings;
 use lib qw( . lib ../lib ../../lib );
 use Test::More;
-use Parrot::Test tests => 6;
+use Parrot::Test tests => 5;
 
 =head1 NAME
 
@@ -35,13 +35,13 @@ OUT
 pir_output_is( <<'CODE', <<'OUT', 'open and close - synchronous', todo => 'not yet implemented' );
 .sub 'test' :main
     $P0 = new ['FileHandle']
-    $P0.open('README')
+    $P0.open('README.pod')
     say 'ok 1 - $P0.open($S1)'
 
     $P0.close()
     say 'ok 2 - $P0.close()'
 
-    $P0.open('README', 'rw')
+    $P0.open('README.pod', 'rw')
     say 'ok 3 - $P0.open($S1, $S2) # rw mode'
 
     $P0.close()
@@ -81,20 +81,20 @@ OUT
 unlink 'new_file';
 
 SKIP: {
-    skip 'no asynch calls yet' => 1;
+    skip 'no async calls yet' => 1;
 
     pir_output_is( <<'CODE', <<'OUT', 'open and close - asynchronous' );
 .sub 'test' :main
-    $P1 = # TT #1204 create a callback here
+    $P1 = # GH #535 create a callback here
     $P0 = new ['FileHandle']
 
-    $P0.open('README')
+    $P0.open('README.pod')
     say 'ok 1 - $P0.open($S1)'
 
     $P0.close()
     say 'ok 2 - $P0.close($P1)'
 
-    $P0.open('README', 'rw')
+    $P0.open('README.pod', 'rw')
     say 'ok 3 - $P0.open($S1, $S2)'
 
     $P0.close()
@@ -121,16 +121,17 @@ pir_output_is(
                chomp = get_global ['String';'Utils'], 'chomp'
 
     $P0 = new ['FileHandle']
-    $P0.open('README')
+    $P0.open('README.pod')
 
-    $S0 = $P0.read(14) # bytes
-    if $S0 == 'This is Parrot' goto ok_1
+    $S0 = $P0.read(15) # bytes
+    if $S0 == '# Copyright (C)' goto ok_1
     print 'not '
   ok_1:
     say 'ok 1 - $S0 = $P1.read($I2)'
 
-    $S0 = $P0.read(9)  # bytes
-    if $S0 == ', version' goto ok_2
+    $S0 = $P0.read(12)  # throw away bytes
+    $S0 = $P0.read(17)  # bytes
+    if $S0 == 'Parrot Foundation' goto ok_2
     print 'not '
   ok_2:
     say 'ok 2 - $S0 = $P1.read($I2)     # again on same stream'
@@ -165,45 +166,9 @@ ok 4 - $S0 = $P1.readline($I2)
 ok 5 - $S0 = $P1.readline($I2) # again on same stream
 OUT
 
-# TT #1204 test reading long chunks, eof, and across newlines
+# GH #535 test reading long chunks, eof, and across newlines
 
-# TT #1204 pir_output_is( <<'CODE', <<'OUT', 'print, read, and readline - asynchronous', todo => 'not yet implemented' );
-
-# L<PDD22/I\/O PMC API/=item record_separator>
-pir_output_is( <<'CODE', <<'OUT', 'record_separator', todo => 'not yet implemented' );
-.sub 'test' :main
-    $P0 = new ['FileHandle']
-
-    $S0 = $P0.record_separator()
-    if $S0 == "\n" goto ok_1
-    print 'not '
-  ok_1:
-    say 'ok 1 - $S0 = $P1.record_separator() # default'
-
-    $S99 = 'abc'
-    $P0.record_separator($S99)
-    $S0 = $P0.record_separator()
-    if $S0 == $S99 goto ok_2
-    print 'not '
-  ok_2:
-    say 'ok 2 - $P0.record_separator($S1)'
-
-    $P0.print(123)
-    $S0 = $P0.record_separator()
-    $P0.print($S0)
-    $P0.print(456)
-
-    $S0 = $P0.readline()
-    if $S0 == '123abc' goto ok_3
-    print 'not '
-  ok_3:
-    say 'ok 3 - $P0.record_separator() # .readline works as expected'
-.end
-CODE
-ok 1 - $S0 = $P1.record_separator() # default
-ok 2 - $P0.record_separator($S1)
-ok 3 - $P0.record_separator() # .readline works as expected
-OUT
+# GH #535 pir_output_is( <<'CODE', <<'OUT', 'print, read, and readline - asynchronous', todo => 'not yet implemented' );
 
 # L<PDD22/I\/O PMC API/=item buffer_type>
 pir_output_is( <<'CODE', <<'OUT', 'buffer_type', todo => 'not yet implemented' );
@@ -263,16 +228,16 @@ ok 5 - $I0 = $P1.buffer_type() # PIO_FULLBUF
 ok 6 - $S0 = $P1.buffer_type() # PIO_FULLBUF
 OUT
 
-# TT #1204 test effects of buffer_type, not just set/get
+# GH #535 test effects of buffer_type, not just set/get
 
-# TT #1177
+# GH #458
 # L<PDD22/I\/O PMC API/=item buffer_size>
 # NOTES: try setting positive, zero, negative int
 # perform print and read ops
 # change buffer size while it contains data
 # try with all 'buffer_type' modes
 
-# TT #1178
+# GH #465
 # L<PDD22/I\/O PMC API/=item get_fd>
 # NOTES: this is going to be platform dependent
 

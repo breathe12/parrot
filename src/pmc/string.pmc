@@ -1,9 +1,9 @@
 /*
-Copyright (C) 2003-2010, Parrot Foundation.
+Copyright (C) 2003-2014, Parrot Foundation.
 
 =head1 NAME
 
-src/pmc/string.pmc - String PMC Class
+src/pmc/string.pmc - String PMC
 
 =head1 DESCRIPTION
 
@@ -53,7 +53,7 @@ Marks the string as live.
 
 */
 
-    VTABLE void mark() {
+    VTABLE void mark() :no_wb {
         STRING *str_val;
         GET_ATTR_str_val(INTERP, SELF, str_val);
         Parrot_gc_mark_STRING_alive(INTERP, str_val);
@@ -69,7 +69,7 @@ Creates a copy of the string.
 
 */
 
-    VTABLE PMC *clone() {
+    VTABLE PMC *clone() :no_wb {
         PMC * const dest = Parrot_pmc_new(INTERP, SELF->vtable->base_type);
         VTABLE_set_string_native(INTERP, dest, SELF.get_string());
         return dest;
@@ -85,7 +85,7 @@ Returns the integer representation of the string.
 
 */
 
-    VTABLE INTVAL get_integer() {
+    VTABLE INTVAL get_integer() :no_wb {
         STRING *str_val;
         GET_ATTR_str_val(INTERP, SELF, str_val);
         return Parrot_str_to_int(INTERP, str_val);
@@ -101,7 +101,7 @@ Returns the floating-point representation of the string.
 
 */
 
-    VTABLE FLOATVAL get_number() {
+    VTABLE FLOATVAL get_number() :no_wb {
         STRING *str_val;
         GET_ATTR_str_val(INTERP, SELF, str_val);
         return Parrot_str_to_num(INTERP, str_val);
@@ -117,7 +117,7 @@ Returns the string itself.
 
 */
 
-    VTABLE STRING *get_string() {
+    VTABLE STRING *get_string() :no_wb {
         STRING *str_val;
         GET_ATTR_str_val(INTERP, SELF, str_val);
         return str_val;
@@ -133,7 +133,7 @@ Returns the boolean value of the string.
 
 */
 
-    VTABLE INTVAL get_bool() {
+    VTABLE INTVAL get_bool() :no_wb {
         STRING *str_val;
         GET_ATTR_str_val(INTERP, SELF, str_val);
         return Parrot_str_boolean(INTERP, str_val);
@@ -151,11 +151,11 @@ Sets the value of the string to the integer C<value>.
 
 */
 
-    VTABLE void set_integer_native(INTVAL value) {
+    VTABLE void set_integer_native(INTVAL value) :manual_wb {
         SELF.set_string_native(Parrot_str_from_int(INTERP, value));
     }
 
-    VTABLE void set_bool(INTVAL value) {
+    VTABLE void set_bool(INTVAL value) :manual_wb {
         SELF.set_string_native(Parrot_str_from_int(INTERP, value));
     }
 
@@ -169,7 +169,7 @@ Sets the value of the string to the floating-point C<value>.
 
 */
 
-    VTABLE void set_number_native(FLOATVAL value) {
+    VTABLE void set_number_native(FLOATVAL value) :manual_wb {
         SELF.set_string_native(Parrot_str_from_num(INTERP, value));
     }
 
@@ -189,13 +189,9 @@ Sets the value of the string to that of the specified C<string>.
             value = STRINGNULL;
 
         /* Only allow constant PMCs to embed constant strings */
-        if (PObj_constant_TEST(SELF) && !PObj_constant_TEST(value)) {
-            char * const copy = Parrot_str_to_cstring(INTERP, value);
-            value             = Parrot_str_new_init(INTERP, copy, strlen(copy),
-                Parrot_default_encoding_ptr,
-                PObj_constant_FLAG);
-            Parrot_str_free_cstring(copy);
-        }
+        if (PObj_constant_TEST(SELF) && !PObj_constant_TEST(value))
+            value = Parrot_str_new_init(INTERP, value->strstart, value->bufused,
+                                        value->encoding, PObj_constant_FLAG);
 
         SET_ATTR_str_val(INTERP, SELF, value);
     }
@@ -224,7 +220,7 @@ the specified C<PMC>.
 =cut
 
 */
-    VTABLE void set_pmc(PMC *value) {
+    VTABLE void set_pmc(PMC *value) :manual_wb {
         SELF.set_string_native(VTABLE_get_string(INTERP, value));
     }
 
@@ -238,7 +234,7 @@ they match.
 =cut
 
 */
-    VTABLE INTVAL is_equal(PMC *value) {
+    VTABLE INTVAL is_equal(PMC *value) :no_wb {
         STRING *str_val;
         STRING * const v = VTABLE_get_string(INTERP, value);
         GET_ATTR_str_val(INTERP, SELF, str_val);
@@ -256,7 +252,7 @@ C<value>; returns true if they match.
 
 */
 
-    VTABLE INTVAL is_equal_num(PMC *value) {
+    VTABLE INTVAL is_equal_num(PMC *value) :no_wb {
         STRING        *str_val;
         FLOATVAL       sf;
         const FLOATVAL vf = VTABLE_get_number(INTERP, value);
@@ -277,7 +273,7 @@ Compares the string with C<value>; returns FALSE if they match.
 
 */
 
-    VTABLE INTVAL is_equal_string(PMC *value) {
+    VTABLE INTVAL is_equal_string(PMC *value) :no_wb {
         STRING *str_val;
         STRING * const v = VTABLE_get_string(INTERP, value);
         GET_ATTR_str_val(INTERP, SELF, str_val);
@@ -295,7 +291,7 @@ is smaller.
 =cut
 
 */
-    VTABLE INTVAL cmp(PMC *value) {
+    VTABLE INTVAL cmp(PMC *value) :no_wb {
         STRING *str_val;
         STRING * const v = VTABLE_get_string(INTERP, value);
         GET_ATTR_str_val(INTERP, SELF, str_val);
@@ -313,7 +309,7 @@ are equal, and 1 if C<value> is smaller.
 =cut
 
 */
-    VTABLE INTVAL cmp_num(PMC *value) {
+    VTABLE INTVAL cmp_num(PMC *value) :no_wb {
         STRING        *str_val;
         FLOATVAL       sf;
         const FLOATVAL vf = VTABLE_get_number(INTERP, value);
@@ -340,7 +336,7 @@ is smaller.
 =cut
 
 */
-    VTABLE INTVAL cmp_string(PMC *value) {
+    VTABLE INTVAL cmp_string(PMC *value) :no_wb {
         STRING        *str_val;
         STRING * const v = VTABLE_get_string(INTERP, value);
         GET_ATTR_str_val(INTERP, SELF, str_val);
@@ -349,24 +345,7 @@ is smaller.
 
 /*
 
-=item C<void substr(INTVAL offset, INTVAL length, PMC *dest)>
-
-Extracts the substring starting at C<offset>, with size
-C<length>, and places it in C<dest>.
-
-=cut
-
-*/
-    VTABLE void substr(INTVAL offset, INTVAL length, PMC *dest) {
-        STRING *str_val, *s2;
-        GET_ATTR_str_val(INTERP, SELF, str_val);
-        s2 = STRING_substr(INTERP, str_val, offset, length);
-        VTABLE_set_string_native(INTERP, dest, s2);
-    }
-
-/*
-
-=item C<STRING *substr_str(INTVAL offset, INTVAL length)>
+=item C<STRING *substr(INTVAL offset, INTVAL length)>
 
 Extracts the substring starting at C<offset>, with size
 C<length>, and returns it.
@@ -374,8 +353,8 @@ C<length>, and returns it.
 =cut
 
 */
-    VTABLE STRING *substr_str(INTVAL offset, INTVAL length) {
-        STRING *str_val;
+    VTABLE STRING *substr(INTVAL offset, INTVAL length) :no_wb {
+        STRING *str_val, *ret;
         GET_ATTR_str_val(INTERP, SELF, str_val);
         return STRING_substr(INTERP, str_val, offset, length);
     }
@@ -391,7 +370,7 @@ numbers count from the end.
 
 */
 
-    VTABLE INTVAL exists_keyed(PMC *key) {
+    VTABLE INTVAL exists_keyed(PMC *key) :no_wb {
         STRING      *str_val;
         INTVAL       n;
         const INTVAL k = VTABLE_get_integer(INTERP, key);
@@ -425,37 +404,37 @@ Replace the string at C<key> with the chr of C<value>.
 
 */
 
-    VTABLE STRING *get_string_keyed(PMC *key) {
+    VTABLE STRING *get_string_keyed(PMC *key) :no_wb {
         return SELF.get_string_keyed_int(VTABLE_get_integer(INTERP, key));
     }
 
-    VTABLE STRING *get_string_keyed_int(INTVAL pos) {
+    VTABLE STRING *get_string_keyed_int(INTVAL pos) :no_wb {
         STRING      *str_val;
         GET_ATTR_str_val(INTERP, SELF, str_val);
         return STRING_substr(INTERP, str_val, pos, 1);
     }
 
-    VTABLE INTVAL get_integer_keyed(PMC *key) {
+    VTABLE INTVAL get_integer_keyed(PMC *key) :no_wb {
         return SELF.get_integer_keyed_int(VTABLE_get_integer(INTERP, key));
     }
 
-    VTABLE INTVAL get_integer_keyed_int(INTVAL pos) {
+    VTABLE INTVAL get_integer_keyed_int(INTVAL pos) :no_wb {
         STRING      *str_val;
         GET_ATTR_str_val(INTERP, SELF, str_val);
         return STRING_ord(INTERP, str_val, pos);
     }
 
-    VTABLE PMC *get_pmc_keyed(PMC *key) {
+    VTABLE PMC *get_pmc_keyed(PMC *key) :no_wb {
         return SELF.get_pmc_keyed_int(VTABLE_get_integer(INTERP, key));
     }
 
-    VTABLE PMC *get_pmc_keyed_int(INTVAL pos) {
+    VTABLE PMC *get_pmc_keyed_int(INTVAL pos) :no_wb {
         PMC * const dest = Parrot_pmc_new(INTERP, SELF->vtable->base_type);
         VTABLE_set_string_native(INTERP, dest, SELF.get_string_keyed_int(pos));
         return dest;
     }
 
-    VTABLE void set_string_keyed(PMC *key, STRING * const value) {
+    VTABLE void set_string_keyed(PMC *key, STRING * const value) :manual_wb {
         SELF.set_string_keyed_int(VTABLE_get_integer(INTERP, key), value);
     }
 
@@ -467,7 +446,7 @@ Replace the string at C<key> with the chr of C<value>.
         SET_ATTR_str_val(INTERP, SELF, str_val);
     }
 
-    VTABLE void set_integer_keyed(PMC *key, INTVAL value) {
+    VTABLE void set_integer_keyed(PMC *key, INTVAL value) :manual_wb {
         SELF.set_integer_keyed_int(VTABLE_get_integer(INTERP, key), value);
     }
 
@@ -479,11 +458,11 @@ Replace the string at C<key> with the chr of C<value>.
         SET_ATTR_str_val(INTERP, SELF, str_val);
     }
 
-    VTABLE void set_pmc_keyed(PMC *key, PMC *value) {
+    VTABLE void set_pmc_keyed(PMC *key, PMC *value) :manual_wb {
         SELF.set_pmc_keyed_int(VTABLE_get_integer(INTERP, key), value);
     }
 
-    VTABLE void set_pmc_keyed_int(INTVAL pos, PMC *value) {
+    VTABLE void set_pmc_keyed_int(INTVAL pos, PMC *value) :manual_wb {
         SELF.set_string_keyed_int(pos, VTABLE_get_string(INTERP, value));
     }
 /*
@@ -496,7 +475,7 @@ Replace every occurrence of C<orig> with C<_new>.
 
 */
 
-    METHOD replace(STRING *orig, STRING *_new) {
+    METHOD replace(STRING *orig, STRING *_new) :manual_wb {
         const INTVAL   old_len = Parrot_str_length(INTERP, orig);
         const INTVAL   new_len = Parrot_str_length(INTERP, _new);
         STRING       * s       = VTABLE_get_string(INTERP, SELF);
@@ -526,23 +505,23 @@ TODO Currently overflow to BigInt is B<not> handled nor detected.
 
 */
 
-    METHOD to_int(INTVAL base) {
+    METHOD to_int(INTVAL base) :no_wb {
         PMC * const result = Parrot_pmc_new(INTERP, Parrot_hll_get_ctx_HLL_type(INTERP,
                         enum_class_Integer));
 
-        /* TODO verify encoding */
-        const STRING *me  = VTABLE_get_string(INTERP, SELF);
-        char  * const str = Parrot_str_to_cstring(INTERP, me);
+        String_iter   iter;
+        const STRING * const me  = VTABLE_get_string(INTERP, SELF);
         UINTVAL       i   = 0;
-        size_t        j   = 0;
-        size_t        len = strlen(str);
+        size_t        len = STRING_length(me);
 
         if (base < 2 || base > 36)
             Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_INVALID_OPERATION,
                     "invalid conversion to int - bad base %d", base);
 
-        while (j < len) {
-            const unsigned char c = str[j];
+        STRING_ITER_INIT(interp, &iter);
+
+        while (iter.charpos < len) {
+            const int c = STRING_iter_get_and_advance(interp, me, &iter);
             int dig;
 
             if (isdigit((unsigned char)c))
@@ -552,23 +531,15 @@ TODO Currently overflow to BigInt is B<not> handled nor detected.
             else if (c >= 'A' && c <= 'Z')
                 dig = c - 'A' + 10;
             else
-                break;
+                dig = base;
 
             if (dig >= base)
-                break;
+                Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_INVALID_OPERATION,
+                        "invalid conversion to int - bad char %c", c);
 
             i = i * base + dig;
-            ++j;
         }
 
-        if (j < len) {
-            const char ch = str[j];
-            Parrot_str_free_cstring(str);
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_INVALID_OPERATION,
-                    "invalid conversion to int - bad char %c", ch);
-        }
-
-        Parrot_str_free_cstring(str);
         /* TODO: autopromote to BigInt instead of casting away the high bit */
         VTABLE_set_integer_native(INTERP, result, (INTVAL)i);
         RETURN(PMC *result);
@@ -595,13 +566,13 @@ Return length of the string.
 
 */
 
-    VTABLE INTVAL elements() {
+    VTABLE INTVAL elements() :no_wb {
         STRING *str_val;
         GET_ATTR_str_val(INTERP, SELF, str_val);
         return Parrot_str_length(INTERP, str_val);
     }
 
-    VTABLE PMC *get_iter() {
+    VTABLE PMC *get_iter() :no_wb {
         return Parrot_pmc_new_init(INTERP, enum_class_StringIterator, SELF);
     }
 
@@ -620,7 +591,7 @@ Used to archive the string.
 =cut
 
 */
-    VTABLE void freeze(PMC *info) {
+    VTABLE void freeze(PMC *info) :no_wb {
         STRING *str_val;
         SUPER(info);
         GET_ATTR_str_val(INTERP, SELF, str_val);
@@ -656,7 +627,7 @@ Translate ascii string C<src> with entries from C<trans_table>.
 
 */
 
-    METHOD trans(STRING *src, PMC *table) {
+    METHOD trans(STRING *src, PMC *table) :no_wb {
         unsigned char *p;
         INTVAL        *tr_data;
         INTVAL         i;
@@ -668,7 +639,7 @@ Translate ascii string C<src> with entries from C<trans_table>.
             RETURN(STRING src);
 
         if (src->encoding != Parrot_ascii_encoding_ptr)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_INVALID_ENCODING,
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_INVALID_ENCODING,
                 "Can't translate non-ascii");
 
         dest = Parrot_str_clone(INTERP, src);
@@ -699,11 +670,11 @@ if present.
 */
 
     METHOD reverse(STRING *src :optional, INTVAL got_src :opt_flag) {
-        STRING *s;
         if (got_src) {
             SET_ATTR_str_val(INTERP, SELF, Parrot_str_reverse(INTERP, src));
         }
         else {
+            STRING *s;
             GET_ATTR_str_val(INTERP, SELF, s);
             SET_ATTR_str_val(INTERP, SELF, Parrot_str_reverse(INTERP, s));
         }
@@ -713,52 +684,51 @@ if present.
 
 =item C<INTEGER is_integer(STRING *src)>
 
-Checks if the ascii STRING C<str> is just an integer.
+Checks if the STRING C<str> is just an integer. Accepts only '0'-'9'
+characters, other digit representations aren't allowed.
 
 =cut
 
 */
 
-    METHOD is_integer(STRING *src) {
-        INTVAL         i;
-        char          *p;
+    METHOD is_integer(STRING *src) :no_wb {
         const INTVAL   len = Parrot_str_length(INTERP, src);
 
         if (!len)
             RETURN(INTVAL 0);
 
-        if (STRING_max_bytes_per_codepoint(src) != 1)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_INVALID_ENCODING,
-                "Can't is_integer non fixed_8");
+        if (STRING_max_bytes_per_codepoint(src) == 1) {
+            const char *p = src->strstart;
+            if (p[0] == '-' || p[0] == '+' || (p[0] >= '0' && p[0] <= '9')) {
+                int i;
+                for (i = 1; i < len; ++i)
+                    if (p[i] < '0' || p[i] > '9')
+                        RETURN(INTVAL 0);
 
-        i = 0;
-        p = src->strstart;
-
-        if (p[i] == '-' || p[i] == '+' ||
-            (p[i] >= '0' && p[i] <= '9')) {
-            for (i = 1; i < len; ++i)
-                if (p[i] < '0' || p[i] > '9')
+                RETURN(INTVAL 1);
+            }
+            else
+                RETURN(INTVAL 0);
+        }
+        else {
+            String_iter iter;
+            UINTVAL c;
+            INTVAL i = 0;
+            STRING_ITER_INIT(interp, &iter);
+            c = STRING_iter_get_and_advance(interp, src, &iter);
+            if ((c == '-' && len < 2) || c < '0' || c > '9')
                     RETURN(INTVAL 0);
-
+            ++i;
+            for (; i < len; ++i) {
+                c = STRING_iter_get_and_advance(interp, src, &iter);
+                if (c < '0' || c > '9')
+                    RETURN(INTVAL 0);
+            }
             RETURN(INTVAL 1);
         }
-        else
-            RETURN(INTVAL 0);
     }
 
-    VTABLE PMC *share_ro() {
-        STRING       *str_val;
-        PMC   * const ret    = SUPER();
-
-        GET_ATTR_str_val(INTERP, SELF, str_val);
-        if (!STRING_IS_NULL(str_val)) {
-            /* prevent wrong garbage collection */
-            PObj_is_shared_SET(str_val);
-        }
-        return ret;
-    }
-
-    VTABLE STRING* get_repr() {
+    VTABLE STRING* get_repr() :no_wb {
         return VTABLE_get_string(INTERP, SELF);
     }
 
@@ -772,26 +742,15 @@ Find last occurrence of C<substring>, but not after the C<start> position.
 
 */
 
-    METHOD reverse_index(STRING *substring, INTVAL start) {
-        STRING * const src = VTABLE_get_string(INTERP, SELF);
-        INTVAL         res = -1;
+    METHOD reverse_index(STRING *substring,
+            INTVAL start :optional, INTVAL has_start :opt_flag) :no_wb {
+        const STRING * const src = VTABLE_get_string(INTERP, SELF);
+        INTVAL         res;
         UINTVAL        len;
 
-        if (start < 0)
-            RETURN(INTVAL res);
-
-        len = Parrot_str_length(INTERP, src);
-
-        if (!len)
-            RETURN(INTVAL res);
-
-        if (start >= (INTVAL)len)
-            RETURN(INTVAL res);
-
-        if (!Parrot_str_length(INTERP, substring))
-            RETURN(INTVAL res);
-
-        res = STRING_rindex(INTERP, src, substring, (UINTVAL)start);
+        if (!has_start)
+            start = STRING_length(src);
+        res = Parrot_str_find_reverse_index(INTERP, src, substring, start);
         RETURN(INTVAL res);
     }
 
@@ -805,10 +764,9 @@ EXPERIMENTAL, for testing only. See TT #1628
 
 */
 
-    METHOD unescape(STRING *encodingname)
+    METHOD unescape(STRING *encodingname) :no_wb
     {
-        const STR_VTABLE *encoding = Parrot_get_encoding(INTERP,
-            Parrot_encoding_number(INTERP, encodingname));
+        const STR_VTABLE * const encoding = Parrot_find_encoding_by_string(INTERP, encodingname);
         STRING * const src = VTABLE_get_string(INTERP, SELF);
         STRING * const dest = Parrot_str_unescape_string(INTERP, src,
                 encoding, 0);

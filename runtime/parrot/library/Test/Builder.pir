@@ -296,7 +296,7 @@ declared a plan or if you pass an invalid argument.
     .local int num_tests
     num_tests = tests
 
-    unless num_tests goto write_header
+    unless num_tests goto bail_out
 
     testplan.'set_tests'( num_tests )
 
@@ -309,6 +309,13 @@ declared a plan or if you pass an invalid argument.
     output.'write'( header )
 
     .return()
+
+  bail_out:
+    .local pmc plan_exception
+    plan_exception = new 'Exception'
+    plan_exception = 'You said to run 0 tests'
+    throw plan_exception
+
 .end
 
 =item done_testing
@@ -565,6 +572,7 @@ also calls C<exit>.
     number = count
     inc number
 
+    # TODO make this thread-safe
     test_args['number'] = number
 
     push results, test
@@ -586,10 +594,8 @@ also calls C<exit>.
 
 =head1 AUTHOR
 
-Written and maintained by chromatic, C<< chromatic at wgz dot org >>, based on
-the Perl 6 port he wrote, based on the original Perl 5 version he wrote with
-ideas from Michael G. Schwern.  Please send patches, feedback, and suggestions
-to the Perl 6 internals mailing list.
+Please send patches, feedback, and suggestions to the Perl 6 internals mailing
+list.
 
 =head1 COPYRIGHT
 

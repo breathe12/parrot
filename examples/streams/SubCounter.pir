@@ -1,5 +1,5 @@
 
-=head1 Counter Example
+=head1 DESCRIPTION
 
 This example shows the usage of C<Stream::Sub>.
 
@@ -13,7 +13,7 @@ Creates a C<Stream::Sub> and dumps it.
 
 =cut
 
-.sub _main
+.sub _main :main
     .local pmc stream
 
     load_bytecode 'Stream/Base.pbc'

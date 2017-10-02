@@ -1,5 +1,5 @@
 #! perl
-# Copyright (C) 2007, Parrot Foundation.
+# Copyright (C) 2007,2014, Parrot Foundation.
 # 001-options.t
 
 use strict;
@@ -11,13 +11,13 @@ BEGIN {
     our $topdir = realpath($Bin) . "/../..";
     unshift @INC, qq{$topdir/lib};
 }
-use Test::More tests => 51;
+use Test::More tests => 94;
 use Carp;
 use Parrot::Configure::Options qw| process_options |;
 use Parrot::Configure::Options::Conf::CLI ();
 use Parrot::Configure::Options::Conf::File ();
 use Parrot::Configure::Options::Reconf ();
-use IO::CaptureOutput qw| capture |;
+use Parrot::Configure::Utils qw| capture |;
 
 my %valid;
 my $badoption = q{samsonanddelilah};
@@ -34,6 +34,19 @@ ok( defined $valid{verbose},     "verbose option found" );
 ok( !defined $valid{$badoption}, "invalid option not found" );
 ok( !defined $valid{step},       "invalid 'step' option not found" );
 ok( !defined $valid{target},     "invalid 'target' option not found" );
+for my $feat (qw(shared static rpath threads)) {
+    my $key = "enable-".$feat;
+    ok( defined $valid{$key}, "$key valid" );
+    $key = "disable-$feat";
+    ok( defined $valid{$key}, "$key valid" );
+}
+for my $lib (qw(llvm pcre crypto gdbm gettext gmp icu opengl libffi
+                readline pcre threads zlib)) {
+    my $key = "with-".$lib;
+    ok( defined $valid{$key}, "$key valid" );
+    $key = "without-".$lib;
+    ok( defined $valid{$key}, "$key valid" );
+}
 
 open my $FH, '<', "$main::topdir/Configure.pl"
     or croak "Unable to open handle to $main::topdir/Configure.pl:  $!";
@@ -72,7 +85,7 @@ my ($args, $step_list_ref);
     }
 );
 ok( defined $args, "process_options() returned successfully" );
-ok( $args->{debugging}, "debugging turned on by default" );
+ok( !$args->{debugging}, "debugging turned off by default" );
 
 eval { ($args, $step_list_ref) = process_options( { argv => [] } ); };
 like(
@@ -86,6 +99,16 @@ like(
     $@,
     qr/Invalid value for 'mode' argument to process_options\(\)/,
     "process_options() failed due to invalid 'mode' argument"
+);
+
+eval { ($args, $step_list_ref) = process_options( {
+    argv => [ '--prefix=my/relative/path' ],
+    mode => q{configure}, } );
+};
+like(
+    $@,
+    qr/Relative path given to --prefix, please pass an absolute path/,
+    "process_options() failed due to relative path as value of 'prefix'",
 );
 
 ($args, $step_list_ref) = process_options(
@@ -102,7 +125,7 @@ my $CX = "/usr/bin/g++-3.3";
 ($args, $step_list_ref) = process_options(
     {
         argv => [
-            q{--cc=$CC},      q{--cxx=$CX}, q{--link=$CX}, q{--ld=$CX},
+            q{--cc=$CC},      q{--link=$CX}, q{--ld=$CX},
             q{--without-icu}, q{--without-gmp},
         ],
         mode => q{configure},
@@ -273,6 +296,24 @@ ok(! defined $data->{help}, "Got expected value for help");
 is($data->{cc}, $cc, "Got expected value for cc");
 is_deeply($short_circuits_ref, [ ],
     "Got expected short circuits");
+
+$args = {
+    argv => [ q{--verbose}, q{--help}, qq{--without-llvm}, qq{--with-pcre}, qq{--without-libffi}, qq{--disable-threads}, ],
+    mode => 'configure',
+};
+($args, $options_components, $script) =
+    Parrot::Configure::Options::_process_options_components($args);
+($data, $short_circuits_ref) =
+    Parrot::Configure::Options::_initial_pass(
+        $args, $options_components, $script);
+is($data->{'without-llvm'}, 1, "--without-llvm detected");
+is($data->{'with-pcre'}, 1,    "--with-pcre detected");
+is($data->{'without-libffi'}, 1, "--without-libffi detected");
+is($data->{'with-llvm'}, 0,    "--without-llvm turns off --with-llvm");
+is($data->{'without-pcre'}, 0, "--with-pcre turns off --without-pcre");
+is($data->{'with-libffi'}, 0,  "--without-libffi turns off --with-pcre");
+is($data->{'enable-threads'}, 0,  "--disable-threads turns off --enable-threads");
+is($data->{'without-threads'}, 1,  "--disable-threads turns on --without-threads");
 
 pass("Completed all tests in $0");
 

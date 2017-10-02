@@ -1,11 +1,11 @@
 #! perl
-# Copyright (C) 2007, Parrot Foundation.
+# Copyright (C) 2007-2014, Parrot Foundation.
 # 02-install_files.t
 
 use strict;
 use warnings;
 
-use Test::More tests => 18;
+use Test::More tests => 16;
 use Carp;
 use Cwd;
 use File::Copy;
@@ -15,7 +15,7 @@ use Parrot::Install qw(
     install_files
     create_directories
 );
-use IO::CaptureOutput qw( capture );
+use Parrot::Configure::Utils qw( capture );
 
 my $cwd = cwd();
 my $testsourcedir = qq{$cwd/t/tools/install/testlib};
@@ -28,16 +28,25 @@ my $testsourcedir = qq{$cwd/t/tools/install/testlib};
     create_directories($tdir, { map { $_ => 1 } @dirs });
 
     {
-        my ( $stdout, $stderr, $rv );
+        my ( $rv, $stdout, $stderr, $retval ) =
+          capture(sub { install_files("destdir", 1); });
+        like($retval, qr/Error: parameter \$options must be a hashref/s,
+             "Catches non-HASH \$options");
+    }
+}
 
-        eval {
-            capture(
-                sub { $rv = install_files($tdir, 1); },
-                \$stdout,
-                \$stderr,
-            );
-        };
-        like($@, qr/Error: parameter \$files must be an array/s, "Catches non-ARRAY \$files");
+{
+    my $tdir = tempdir( CLEANUP => 1 );
+    $tdir .= '/';
+
+    my @dirs = qw(foo/bar foo/bar/baz);
+    create_directories($tdir, { map { $_ => 1 } @dirs });
+
+    {
+        my ( $rv, $stdout, $stderr, $retval ) =
+          capture( sub { install_files({}); });
+        like($retval, qr/Error: parameter \$files must be an array/s,
+             "Catches non-ARRAY \$files");
     }
 }
 
@@ -53,12 +62,15 @@ my $testsourcedir = qq{$cwd/t/tools/install/testlib};
 
     {
         my ( $stdout, $stderr, $rv );
-        capture(
-            sub { $rv = install_files($tdir, 0, $files_ref); },
-            \$stdout,
-            \$stderr,
-        );
-        like($stderr, qr/Bad reference passed in \$files/, "Catches non-HASH files");
+        eval {
+            capture(
+                sub { $rv = install_files({'dry-run'=>1}, '', $files_ref); },
+                \$stdout,
+                \$stderr,
+            );
+        };
+        like($stderr, qr/Bad reference passed in \$files/,
+             "Catches non-HASH files");
 
         like( $stdout, qr/Installing \.\.\./,
             'Got expected installation message' );
@@ -73,15 +85,15 @@ my $testsourcedir = qq{$cwd/t/tools/install/testlib};
     create_directories($tdir, { map { $_ => 1 } @dirs });
 
     my $files_ref = [ {
-        Source => "$testsourcedir/README",
-        Dest => "$dirs[0]/README",
+        Source => "$testsourcedir/README.pod",
+        Dest => "$dirs[0]/README.pod",
     } ];
 
     {
         my ( $stdout, $stderr, $rv );
 
         capture(
-            sub { $rv = install_files($tdir, 1, $files_ref); },
+            sub { $rv = install_files({'dry-run'=>1},'',$files_ref); },
             \$stdout,
             \$stderr,
         );
@@ -93,15 +105,17 @@ my $testsourcedir = qq{$cwd/t/tools/install/testlib};
         }
         is( $files_created, 0, 'Dry run, so no files created' );
 
-        like( $stdout, qr/Installing.*README.*README/s,
+        like( $stdout, qr/Installing.*README\.pod.*README\.pod/s,
             'Got expected installation message' );
-        $stdout =~ qr/Installing.*README.*README/s or print "Warning was: $stderr";
+        $stdout =~ qr/Installing.*README\.pod.*README\.pod/s
+          or print "Warning was: $stderr";
     }
 
     {
         my ( $stdout, $stderr, $rv );
         capture(
-            sub { $rv = install_files($tdir, 0, $files_ref); },
+            sub { $rv = install_files({destdir=>$tdir, 'dry-run'=>0}, '',
+                                      $files_ref); },
             \$stdout,
             \$stderr,
         );
@@ -113,7 +127,7 @@ my $testsourcedir = qq{$cwd/t/tools/install/testlib};
         }
         is( $files_created, 1, 'Production, so 1 file created' );
 
-        like( $stdout, qr/Installing.*README/s,
+        like( $stdout, qr/Installing.*README\.pod/s,
             'Got expected installation message' );
     }
 }
@@ -127,15 +141,15 @@ my $testsourcedir = qq{$cwd/t/tools/install/testlib};
     my @dirs = qw(foo/bar foo/bar/baz);
     create_directories($tdir, { map { $_ => 1 } @dirs });
 
-    my @testingfiles = qw( README phony );
+    my @testingfiles = qw( README.pod phony );
     foreach my $f ( @testingfiles ) {
         copy "$testsourcedir/$f", "$tdir/$f"
             or die "Unable to copy $f prior to testing: $!";
     }
     my $files_ref = [
         {
-            Source => "$tdir/README",
-            Dest => "$dirs[0]/README",
+            Source => "$tdir/README.pod",
+            Dest => "$dirs[0]/README.pod",
         },
         {
             Source => "$tdir/phony",
@@ -146,7 +160,8 @@ my $testsourcedir = qq{$cwd/t/tools/install/testlib};
     {
         my ( $stdout, $stderr, $rv );
         capture(
-            sub { $rv = install_files($tdir, 0, $files_ref); },
+            sub { $rv = install_files({destdir=>$tdir, 'dry-run'=>0}, '',
+                                      $files_ref); },
             \$stdout,
             \$stderr,
         );
@@ -158,58 +173,7 @@ my $testsourcedir = qq{$cwd/t/tools/install/testlib};
         }
         is( $files_created, 2, 'Production, so 2 files created' );
 
-        like( $stdout, qr/Installing.*README.*phony/s,
-            'Got expected installation message' );
-    }
-    chdir $cwd or die "Unable to change back to starting directory: $!";
-}
-
-{
-    local $^O = 'cygwin';
-    my $tdir = tempdir( CLEANUP => 1 );
-    chdir $tdir or die "Unable to change to testing directory: $!";
-    $tdir .= '/';
-
-    my @dirs = qw(foo/bar foo/bar/baz);
-    create_directories($tdir, { map { $_ => 1 } @dirs });
-
-    my @testingfiles = qw( README phony phony.exe );
-    foreach my $f ( @testingfiles ) {
-        copy "$testsourcedir/$f", "$tdir/$f"
-            or die "Unable to copy $f prior to testing: $!";
-    }
-    my $files_ref = [
-        {
-            Source => "$tdir/README",
-            Dest => "$dirs[0]/README"
-        },
-        {
-            Source => "$tdir/phony",
-            Dest => "$dirs[0]/phony"
-        },
-        {
-            Source => "$tdir/phony.exe",
-            Dest => "$dirs[0]/phony.exe"
-        },
-    ];
-
-    {
-        my ( $stdout, $stderr, $rv );
-        capture(
-            sub { $rv = install_files($tdir, 0, $files_ref); },
-            \$stdout,
-            \$stderr,
-        );
-        ok( $rv, 'install_files() completed successfully in mock-Cygwin case' );
-
-        my $files_created = 0;
-        foreach my $el (@$files_ref) {
-            $files_created++ if -f "$tdir$el->{Dest}";
-        }
-        is( $files_created, 2,
-            'Production, so 2 files created; 1 file passed over' );
-
-        like( $stdout, qr/Installing.*README.*phony/s,
+        like( $stdout, qr/Installing.*README\.pod.*phony/s,
             'Got expected installation message' );
     }
     chdir $cwd or die "Unable to change back to starting directory: $!";
@@ -234,7 +198,7 @@ my $testsourcedir = qq{$cwd/t/tools/install/testlib};
     {
         my ( $stdout, $stderr, $rv );
         capture(
-            sub { $rv = install_files($tdir, 0, $files_ref); },
+            sub { $rv = install_files({destdir=>$tdir, 'dry-run'=>0}, '', $files_ref); },
             \$stdout,
             \$stderr,
         );
@@ -259,9 +223,10 @@ pass("Completed all tests in $0");
 
 =head1 DESCRIPTION
 
-The files in this directory test functionality used by the the scripts
-F<tools/dev/install_files.pl>, F<tools/dev/install_doc_files.pl> and F<tools/dev/install_dev_files.pl>
-and are exported by F<lib/Parrot/Install.pm>.
+The files in this directory test functionality used by the scripts
+F<tools/dev/install_files.pl>, F<tools/dev/install_doc_files.pl> and
+F<tools/dev/install_dev_files.pl> and are exported by
+F<lib/Parrot/Install.pm>.
 
 =head1 AUTHOR
 
@@ -269,13 +234,14 @@ James E Keenan and Timothy S Nelson
 
 =head1 SEE ALSO
 
-Parrot::Install, F<tools/dev/install_files.pl>, F<tools/dev/install_doc_files.pl>, F<tools/dev/install_dev_files.pl>
+Parrot::Install, F<tools/dev/install_files.pl>,
+F<tools/dev/install_doc_files.pl>, F<tools/dev/install_dev_files.pl>
 
 =cut
 
 # Local Variables:
 #   mode: cperl
 #   cperl-indent-level: 4
-#   fill-column: 100
+#   fill-column: 78
 # End:
 # vim: expandtab shiftwidth=4:

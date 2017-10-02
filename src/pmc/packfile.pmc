@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2001-2010, Parrot Foundation.
+Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -94,15 +94,15 @@ copy_packfile_header(PARROT_INTERP, ARGMOD(PMC *self), ARGIN(PackFile *pf))
 }
 
 pmclass Packfile auto_attrs {
-    ATTR INTVAL wordsize;
-    ATTR INTVAL byteorder;
-    ATTR INTVAL fptype;
-    ATTR INTVAL version_major;
-    ATTR INTVAL version_minor;
-    ATTR INTVAL version_patch;
-    ATTR INTVAL bytecode_major;
-    ATTR INTVAL bytecode_minor;
-    ATTR INTVAL uuid_type;
+    ATTR INTVAL  wordsize;
+    ATTR INTVAL  byteorder;
+    ATTR INTVAL  fptype;
+    ATTR INTVAL  version_major;
+    ATTR INTVAL  version_minor;
+    ATTR INTVAL  version_patch;
+    ATTR INTVAL  bytecode_major;
+    ATTR INTVAL  bytecode_minor;
+    ATTR INTVAL  uuid_type;
     ATTR STRING *uuid;
 
     ATTR PMC    *directory;
@@ -112,6 +112,10 @@ pmclass Packfile auto_attrs {
 
 Initialize the structure.  (Create a blank PackFile object.)
 
+=item C<VTABLE void init_pmc(view)>
+
+Create a new PackFile from an existing PackFileView.
+
 =cut
 
 */
@@ -120,15 +124,21 @@ Initialize the structure.  (Create a blank PackFile object.)
                 PMC_data_typed(SELF, Parrot_Packfile_attributes*);
         PackFile                   *pf;
 
+        /* copy_packfile_header can trigger GC. Set custom_mark flag early */
+        PObj_custom_mark_SET(SELF);
+
         attrs->uuid     = CONST_STRING(INTERP, "");
         attrs->directory = Parrot_pmc_new(INTERP, enum_class_PackfileDirectory);
 
         /* Create dummy PackFile and copy default attributes to self */
-        pf = PackFile_new(INTERP, 0);
+        pf = Parrot_pf_new(INTERP, 0);
         copy_packfile_header(INTERP, SELF, pf);
-        PackFile_destroy(INTERP, pf);
+        Parrot_pf_destroy(INTERP, pf);
+    }
 
-        PObj_custom_mark_SET(SELF);
+    VTABLE void init_pmc(PMC *view) :manual_wb {
+        VTABLE_init(interp, SELF);
+        VTABLE_set_pointer(interp, SELF, VTABLE_get_pointer(interp, view));
     }
 
 
@@ -142,7 +152,7 @@ Marks the Packfile as alive.
 
 */
 
-    VTABLE void mark() {
+    VTABLE void mark() :no_wb {
         Parrot_Packfile_attributes * const attrs = PARROT_PACKFILE(SELF);
 
         Parrot_gc_mark_STRING_alive(INTERP, attrs->uuid);
@@ -159,16 +169,11 @@ Return raw serialized PBC file data.
 Implementation note: all hard stuff done by PackfileDirectory.
 
 */
-    VTABLE STRING *get_string() {
-        Parrot_Packfile_attributes * const attrs = PARROT_PACKFILE(SELF);
+    VTABLE STRING *get_string() :no_wb {
+        STRING *str;
+        const Parrot_Packfile_attributes * const attrs = PARROT_PACKFILE(SELF);
         PackFile                   * const pf =
                 (PackFile*)VTABLE_get_pointer(INTERP, attrs->directory);
-
-        STRING      *str;
-
-        /* Calculate required memory */
-        const opcode_t length = PackFile_pack_size(INTERP, pf) * sizeof (opcode_t);
-        opcode_t * const ptr  = (opcode_t*)Parrot_gc_allocate_memory_chunk(INTERP, length);
 
         /* Copy related attributes to header */
         pf->header->major     = attrs->version_major;
@@ -176,14 +181,9 @@ Implementation note: all hard stuff done by PackfileDirectory.
         pf->header->patch     = attrs->version_patch;
         pf->header->uuid_type = attrs->uuid_type;
 
-        /* And pack it! */
-        PackFile_pack(INTERP, pf, ptr);
+        str = Parrot_pf_serialize(INTERP, pf);
 
-        str = Parrot_str_new_init(INTERP, (const char*)ptr, length,
-                Parrot_binary_encoding_ptr, 0);
-        Parrot_gc_free_memory_chunk(INTERP, ptr);
-
-        PackFile_destroy(INTERP, pf);
+        Parrot_pf_destroy(INTERP, pf);
         return str;
     }
 
@@ -201,29 +201,43 @@ Implementation note: taken from the bottom end of Parrot_pbc_read().
 
     VTABLE void set_string_native(STRING *str) {
         Parrot_Packfile_attributes * const attrs = PARROT_PACKFILE(SELF);
-        PackFile                   * const pf    = PackFile_new(INTERP, 0);
-        const opcode_t             * const ptr   =
-                (const opcode_t *)Parrot_str_cstring(INTERP, str);
-
-        const int length = Parrot_str_byte_length(INTERP, str);
-
-        if (!PackFile_unpack(INTERP, pf, ptr, length)) {
-            PackFile_destroy(INTERP, pf);
-            Parrot_ex_throw_from_c_args(INTERP, NULL,
-                EXCEPTION_MALFORMED_PACKFILE, "Can't unpack packfile.");
-        }
+        PackFile * const pf = Parrot_pf_deserialize(INTERP, str);
 
         /* Disable GC during copy data into internal structures. */
         Parrot_block_GC_mark(INTERP);
 
         /* Copy values from PackFile header to own attributes */
         copy_packfile_header(INTERP, SELF, pf);
-
         VTABLE_set_pointer(INTERP, attrs->directory, &pf->directory);
-
         Parrot_unblock_GC_mark(INTERP);
 
-        PackFile_destroy(INTERP, pf);
+        /* XXX memory leak
+         * Destroying the packfile here frees segments that may still have live references
+         * (eg: sub->seg)
+         * A memory leak is better than an invalid memory access
+         */
+#if 0
+        Parrot_pf_destroy(INTERP, pf);
+#endif
+    }
+
+/*
+
+=item C<void set_pointer(void *ptr)>
+
+Set a raw PackFile* pointer to this Packfile PMC
+
+=cut
+
+*/
+
+    VTABLE void set_pointer(void * ptr) {
+        Parrot_Packfile_attributes * const attrs = PARROT_PACKFILE(SELF);
+        PackFile * const pf = (PackFile *)ptr;
+        Parrot_block_GC_mark(INTERP);
+        copy_packfile_header(INTERP, SELF, pf);
+        VTABLE_set_pointer(INTERP, attrs->directory, &pf->directory);
+        Parrot_unblock_GC_mark(INTERP);
     }
 
 
@@ -253,15 +267,13 @@ Fetch an integer keyed value from the packfile object.  Valid keys are:
 
 =item uuid_type
 
-=item uuid_length
-
 =back
 
 =cut
 
 */
-    VTABLE INTVAL get_integer_keyed_str(STRING *key) {
-        Parrot_Packfile_attributes * const attrs = PARROT_PACKFILE(SELF);
+    VTABLE INTVAL get_integer_keyed_str(STRING *key) :no_wb {
+        const Parrot_Packfile_attributes * const attrs = PARROT_PACKFILE(SELF);
 
         INTVAL result;
         switch (getAttrEnum(INTERP, key)) {
@@ -314,7 +326,7 @@ Fetch a string keyed value from the packfile object.  Valid keys are:
 =cut
 
 */
-    VTABLE STRING *get_string_keyed_str(STRING *key) {
+    VTABLE STRING *get_string_keyed_str(STRING *key) :no_wb {
         if (STRING_equal(INTERP, key, CONST_STRING(INTERP, "uuid")))
             return PARROT_PACKFILE(SELF)->uuid;
 
@@ -333,7 +345,7 @@ get_integer_keyed_str.
 =cut
 
 */
-    VTABLE INTVAL get_integer_keyed(PMC *key) {
+    VTABLE INTVAL get_integer_keyed(PMC *key) :no_wb {
         STRING * const s = VTABLE_get_string(INTERP, key);
         return SELF.get_integer_keyed_str(s);
     }
@@ -349,7 +361,7 @@ get_string_keyed_str.
 =cut
 
 */
-    VTABLE STRING *get_string_keyed(PMC *key) {
+    VTABLE STRING *get_string_keyed(PMC *key) :no_wb {
         STRING * const s = VTABLE_get_string(INTERP, key);
         return SELF.get_string_keyed_str(s);
     }
@@ -407,14 +419,14 @@ set_integer_keyed_str.
 =cut
 
 */
-    VTABLE void set_integer_keyed(PMC *key, INTVAL val) {
+    VTABLE void set_integer_keyed(PMC *key, INTVAL val) :manual_wb {
         STRING * const s = VTABLE_get_string(INTERP, key);
         SELF.set_integer_keyed_str(s, val);
     }
 
 /*
 
-=item * C<get_string_keyed_str> (v-table)
+=item C<get_string_keyed_str> (v-table)
 
 Used to get data about fields in the header that have a string value. Valid
 keys are:
@@ -429,9 +441,10 @@ keys are:
 
 */
 
-    VTABLE void set_string_keyed_str(STRING *key, STRING *value) {
+    VTABLE void set_string_keyed_str(STRING *key, STRING *value) :manual_wb {
         if (STRING_equal(INTERP, key, CONST_STRING(INTERP, "uuid"))) {
             PARROT_PACKFILE(SELF)->uuid = value;
+            PARROT_GC_WRITE_BARRIER(INTERP, SELF);
             return;
         }
 
@@ -449,7 +462,7 @@ set_string_keyed_str.
 =cut
 
 */
-    VTABLE void set_string_keyed(PMC *key, STRING *val) {
+    VTABLE void set_string_keyed(PMC *key, STRING *val) :manual_wb {
         STRING * const s = VTABLE_get_string(INTERP, key);
         SELF.set_string_keyed_str(s, val);
     }
@@ -465,14 +478,14 @@ Return raw serialized PBC file data. Synonym for get_string.
 
 */
 
-    METHOD pack() {
+    METHOD pack() :no_wb {
         STRING * const ret = SELF.get_string();
         RETURN(STRING * ret);
     }
 
 /*
 
-=item C<STRING * unpack()>
+=item C<void unpack(STRING *data)>
 
 Parse raw serialized PBC file data into the Packfile data structure.
 Synonym for set_string.
@@ -481,7 +494,7 @@ Synonym for set_string.
 
 */
 
-    METHOD unpack(STRING *str) {
+    METHOD unpack(STRING *str) :manual_wb {
         SELF.set_string_native(str);
     }
 
@@ -495,9 +508,29 @@ start of the packfile.
 =cut
 
 */
-    METHOD get_directory() {
+    METHOD get_directory() :no_wb {
         PMC * const dir = PARROT_PACKFILE(SELF)->directory;
         RETURN(PMC *dir);
+    }
+
+/*
+
+=item C<PMC *view()>
+
+Get a PackfileView for the current packfile. PackfileView is a read-only
+wrapper around a static packfile structure. This method creates a fresh copy
+of the packfile structure and assigns that copy to the new PackfileView PMC.
+
+=cut
+
+*/
+
+    METHOD view() :no_wb {
+        const Parrot_Packfile_attributes * const attrs = PARROT_PACKFILE(SELF);
+        PackFile * const pf =
+                (PackFile*)VTABLE_get_pointer(INTERP, attrs->directory);
+        PMC * const view = Parrot_pf_get_packfile_pmc(INTERP, pf, STRINGNULL);
+        RETURN(PMC * view);
     }
 
 }
@@ -508,10 +541,6 @@ start of the packfile.
 =back
 
 =cut
-
-*/
-
-/*
 
 =head2 Auxliary functions
 

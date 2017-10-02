@@ -1,11 +1,13 @@
 #! perl
-# Copyright (C) 2001-2008, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 use strict;
 use warnings;
 use lib qw( . lib ../lib ../../lib );
 use Test::More;
-use Parrot::Test tests => 31;
+use Parrot::Test tests => 32,
+    qw[run_command slurp_file];
+use Parrot::Test::Util 'create_tempfile';
 
 =head1 NAME
 
@@ -22,6 +24,7 @@ Tests C<Exception> and C<ExceptionHandler> PMCs.
 =cut
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "push_eh label - pop_eh" );
+.pcc_sub :main main:
     push_eh _handler
     print "ok 1\n"
     pop_eh
@@ -35,6 +38,7 @@ ok 2
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "push_eh eh - pop_eh" );
+.pcc_sub :main main:
     new P29, 'ExceptionHandler'
     push_eh P29
     print "ok 1\n"
@@ -47,6 +51,7 @@ ok 2
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "push_eh - throw" );
+.pcc_sub :main main:
     print "main\n"
     push_eh _handler
     new P30, 'Exception'
@@ -62,6 +67,7 @@ caught it
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "push_eh eh - throw" );
+.pcc_sub :main main:
     print "main\n"
     new P29, 'ExceptionHandler'
     set_label P29, _handler
@@ -79,6 +85,7 @@ caught it
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "get_results" );
+.pcc_sub :main main:
     print "main\n"
     push_eh handler
     new P1, 'Exception'
@@ -106,6 +113,7 @@ just pining
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "get_results - be sure registers are ok" );
+.pcc_sub :main main:
 # see also #38459
     print "main\n"
     new P0, 'Integer'
@@ -156,6 +164,7 @@ just pining
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "push_eh - throw - message" );
+.pcc_sub :main main:
     print "main\n"
     push_eh _handler
 
@@ -178,6 +187,7 @@ something happened
 OUTPUT
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "throw - no handler" );
+.pcc_sub :main main:
     new P0, 'Exception'
     set P0, "something happened"
     throw P0
@@ -188,6 +198,7 @@ CODE
 OUTPUT
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "throw - no handler, no message" );
+.pcc_sub :main main:
     push_eh _handler
     new P0, 'Exception'
     pop_eh
@@ -201,6 +212,7 @@ CODE
 OUTPUT
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "throw - no handler, no message" );
+.pcc_sub :main main:
     new P0, 'Exception'
     throw P0
     print "not reached\n"
@@ -210,6 +222,7 @@ CODE
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "2 exception handlers" );
+.pcc_sub :main main:
     print "main\n"
     push_eh _handler1
     push_eh _handler2
@@ -240,6 +253,7 @@ something happened
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "2 exception handlers, throw next" );
+.pcc_sub :main main:
     print "main\n"
     push_eh _handler1
     push_eh _handler2
@@ -273,6 +287,7 @@ something happened
 OUTPUT
 
 pasm_output_is( <<'CODE', <<OUT, "die" );
+.pcc_sub :main main:
     push_eh _handler
     die 3, 100
     print "not reached\n"
@@ -285,6 +300,7 @@ caught it
 OUT
 
 pasm_output_is( <<'CODE', <<OUT, "die, error, severity" );
+.pcc_sub :main main:
     push_eh _handler
     die 3, 100
     print "not reached\n"
@@ -303,6 +319,7 @@ severity 3
 OUT
 
 pasm_error_output_like( <<'CODE', <<OUT, "die - no handler" );
+.pcc_sub :main main:
     die 3, 100
     print "not reached\n"
     end
@@ -314,6 +331,7 @@ CODE
 OUT
 
 pasm_output_is( <<'CODE', '', "exit exception" );
+.pcc_sub :main main:
     noop
     exit 0
     print "not reached\n"
@@ -321,6 +339,7 @@ pasm_output_is( <<'CODE', '', "exit exception" );
 CODE
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "push_eh - throw" );
+.pcc_sub :main main:
     print "main\n"
     push_eh handler
     print "ok\n"
@@ -380,7 +399,7 @@ OUTPUT
 # stringification is handled by a vtable, which runs in a second
 # runloop. when an error in the method tries to go to a Error_Handler defined
 # outside it, it winds up going to the inner runloop, giving strange results.
-pir_output_is( <<'CODE', <<'OUTPUT', 'pop_eh out of context (2)', todo => 'runloop shenanigans' );
+pir_output_is( <<'CODE', <<'OUTPUT', 'pop_eh out of context (2)' );
 .sub main :main
         $P0 = get_hll_global ['Foo'], 'load'
         $P0()
@@ -392,6 +411,8 @@ pir_output_is( <<'CODE', <<'OUTPUT', 'pop_eh out of context (2)', todo => 'runlo
         .return()
 
 catch:
+        .get_results ($P1)
+        finalize $P1
         say "caught"
         .return()
 .end
@@ -578,7 +599,7 @@ pir_output_is( <<'CODE', <<'OUTPUT', "resuming after exception handled - return 
     $P0 = new 'FirstClass'
     $P1 = $P0.'compile'(classname)
     print "returned from handler\nException message: "
-    print $P1
+    say $P1
 .end
 
 .namespace [ "FirstClass" ]
@@ -614,7 +635,7 @@ in compile method
 in make method
 in handler
 returned from handler
-Exception message: Class Foo already registered!
+Exception message: Class Foo already registered
 after compile
 OUTPUT
 
@@ -673,6 +694,92 @@ in the handler
 ok 3
 ok 4
 OUTPUT
+
+# Test massaged from TT #2188
+SKIP: {
+    skip "with valgrind", 1 if $ENV{VALGRIND};
+
+    sub compile_wx {
+        my $code = shift;
+        my ($fh, $wx_filename) = create_tempfile( SUFFIX => '.winxed', UNLINK => 1 );
+        (undef, my $pir_filename) = create_tempfile( SUFFIX => '.pir', UNLINK => 1 );
+        (undef, my $pbc_filename) = create_tempfile( SUFFIX => '.pbc', UNLINK => 1 );
+        print $fh $code;
+        if (system(qw[./winxed --target=pir -o], $pir_filename, $wx_filename)) {
+            die "Couldn't compile winxed code";
+        }
+        if (system(qw[./parrot -o], $pbc_filename, $pir_filename)) {
+            die "couldn't compile PIR";
+        }
+        close $fh;
+        return $pbc_filename;
+    }
+
+
+    my $friend = compile_wx(<<'WX1'); my $exptest = compile_wx(sprintf(<<'WX2', $friend));
+namespace em {
+    class Friend {
+        function Friend() {}
+
+        function call() {
+            throw new 'Exception'({
+                        "message"   : "Damned ! an exception !",
+                        "severity"  : 100});
+        }
+    }
+}
+WX1
+$load '%s';
+
+namespace em {
+    class Friend;
+    class User {
+        function User() {}
+
+        function call0() {
+            try {
+                self.call1();
+            } catch(ex) {
+                say(ex['message']);
+                for (string exstr in ex.backtrace_strings()) {
+                    for (string str in split("\n",exstr)) {
+                        say(str);
+                    }
+                }
+            }
+            self.call1();
+        }
+
+        function call1() {
+            var friend = new em.Friend();
+            friend.call();
+        }
+    }
+}
+
+function main[main](var argv) {
+    var user = new em.User();
+    user.call0();
+}
+WX2
+
+    (undef, my $user_bt_file) = create_tempfile( UNLINK => 1 );
+    (undef, my $auto_bt_file) = create_tempfile( UNLINK => 1 );
+
+    run_command("./parrot $exptest",
+        STDOUT => $user_bt_file,
+        STDERR => $auto_bt_file);
+
+    my @user_bt = split /\n/, slurp_file($user_bt_file);
+    my @auto_bt = split /\n/, slurp_file($auto_bt_file);
+
+    # 3rd backtrace frame differs intentionally
+    delete $user_bt[3]; delete $auto_bt[3];
+
+    is_deeply([@user_bt], [@auto_bt],
+        "user-level backtraces the same as automatically generated backtraces");
+}
+
 # Local Variables:
 #   mode: cperl
 #   cperl-indent-level: 4

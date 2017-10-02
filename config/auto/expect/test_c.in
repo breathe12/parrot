@@ -1,0 +1,27 @@
+/*
+  Copyright (C) 2014, Parrot Foundation.
+
+*/
+
+#include <stdio.h>
+
+int
+main(int argc, char* argv[])
+{
+    int i = 1;
+    if (__builtin_expect(i == 1, 1)) {
+        puts("1");
+        return 0;
+    }
+    else {
+        return 1;
+    }
+}
+
+/*
+ * Local variables:
+ *   mode: c
+ *   c-file-style: "parrot"
+ * End:
+ * vim: expandtab shiftwidth=4 cinoptions='\:2=2' :
+ */

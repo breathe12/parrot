@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2002-2008, Parrot Foundation.
+ * Copyright (C) 2002-2012, Parrot Foundation.
 ** io.ops
 */
 
@@ -16,7 +16,7 @@ io.ops - I/O Opcodes
 
 =head1 DESCRIPTION
 
-Parrot's IO API
+Parrot IO API
 
 When making changes to any ops file, run C<make bootstrap-ops> to regenerate
 all generated ops files.
@@ -46,34 +46,44 @@ Print $1 to standard output.
 =cut
 
 inline op print(in INT) :base_io {
-    Parrot_io_printf(interp, INTVAL_FMT, (INTVAL)$1);
+    char buf[128];
+#ifdef PARROT_HAS_SNPRINTF
+    snprintf(buf, 128, INTVAL_FMT, (INTVAL)$1);
+#else
+    sprintf(buf, INTVAL_FMT, (INTVAL)$1);
+#endif
+    Parrot_io_write_b(interp, _PIO_STDOUT(interp), buf, strlen(buf));
 }
 
 inline op print(in NUM) :base_io {
-#ifdef PARROT_HAS_NEGATIVE_ZERO
-    Parrot_io_printf(interp, FLOATVAL_FMT, $1);
+    char buf[128];
+#ifdef PARROT_HAS_SNPRINTF
+    snprintf(buf, 128, FLOATVAL_FMT, $1);
 #else
-    /* Workaround for older msvcrt and openbsd. TT #313 */
-    if (Parrot_is_nzero($1)) {
-        Parrot_io_printf(interp, "-0");
-    }
-    else {
-        Parrot_io_printf(interp, FLOATVAL_FMT, $1);
-    }
+    sprintf(buf, FLOATVAL_FMT, $1);
+#endif
+#ifdef PARROT_HAS_NEGATIVE_ZERO
+    Parrot_io_write_b(interp, _PIO_STDOUT(interp), buf, strlen(buf));
+#else
+    if (!Parrot_is_nzero(NREG(1)))
+        Parrot_io_write_b(interp, _PIO_STDOUT(interp), buf, strlen(buf));
+    else
+        /* Workaround for older msvcrt and openbsd. GH #366 */
+        Parrot_io_write_b(interp, _PIO_STDOUT(interp), "-0", 2);
 #endif
 }
 
 op print(in STR) :base_io {
     STRING * const s = $1;
     if (s && Parrot_str_byte_length(interp, s))
-        Parrot_io_putps(interp, _PIO_STDOUT(interp), s);
+        Parrot_io_write_s(interp, _PIO_STDOUT(interp), s);
 }
 
 op print(invar PMC) :base_io {
     PMC * const p = $1;
     STRING * const s = (VTABLE_get_string(interp, p));
     if (s)
-        Parrot_io_putps(interp, _PIO_STDOUT(interp), s);
+        Parrot_io_write_s(interp, _PIO_STDOUT(interp), s);
 }
 
 =item B<say>(in INT)
@@ -89,28 +99,66 @@ Print $1 to standard output with a trailing newline.
 =cut
 
 inline op say(in INT) :base_io {
-    Parrot_io_printf(interp, INTVAL_FMT "\n", (INTVAL)$1);
+    char buf[128];
+#ifdef PARROT_HAS_SNPRINTF
+    snprintf(buf, 128, INTVAL_FMT "\n", (INTVAL)$1);
+#else
+    sprintf(buf, INTVAL_FMT "\n", (INTVAL)$1);
+#endif
+    Parrot_io_write_b(interp, _PIO_STDOUT(interp), buf, strlen(buf));
 }
 
 inline op say(in NUM) :base_io {
-#ifdef PARROT_HAS_NEGATIVE_ZERO
-    Parrot_io_printf(interp, FLOATVAL_FMT "\n", $1);
+    char buf[128];
+#ifdef PARROT_HAS_SNPRINTF
+    snprintf(buf, 128, FLOATVAL_FMT "\n", $1);
 #else
-    /* Workaround for older msvcrt and openbsd. TT #313 */
-    if (Parrot_is_nzero($1)) {
-        Parrot_io_printf(interp, "-0\n");
-    }
-    else {
-        Parrot_io_printf(interp, FLOATVAL_FMT "\n", $1);
-    }
+    sprintf(buf, 128, FLOATVAL_FMT, $1);
+#endif
+#ifdef PARROT_HAS_NEGATIVE_ZERO
+    Parrot_io_write_b(interp, _PIO_STDOUT(interp), buf, strlen(buf));
+#else
+    if (!Parrot_is_nzero(NREG(1)))
+        Parrot_io_write_b(interp, _PIO_STDOUT(interp), buf, strlen(buf));
+    else
+        /* Workaround for older msvcrt and openbsd. GH #366 */
+        Parrot_io_write_b(interp, _PIO_STDOUT(interp), "-0\n", 2);
 #endif
 }
 
+/*
+
+If the string argument can be extended by \n without copying,
+concat the strings before calling io_write_s to provider better atomicity
+with threads. To avoid mixing strings with newlines in most cases.
+This is not foolproof of course. [GH #893]
+
+*/
+
 op say(in STR) :base_io {
     STRING * const s = $1;
-    if (s && Parrot_str_byte_length(interp, s))
-        Parrot_io_putps(interp, _PIO_STDOUT(interp), s);
-    Parrot_io_putps(interp, _PIO_STDOUT(interp), Parrot_str_new_constant(interp, "\n"));
+    STRING * const nl = Parrot_str_new_constant(interp, "\n");
+
+#ifdef PARROT_HAS_THREADS
+    if (s) {
+        int len = STRING_IS_NULL(s) ? 0 : s->bufused;
+        if (len < 80) {
+            Parrot_io_write_s(interp, _PIO_STDOUT(interp),
+                              Parrot_str_concat(interp, s, nl));
+        }
+        else {
+            Parrot_io_write_s(interp, _PIO_STDOUT(interp), s);
+            Parrot_io_write_s(interp, _PIO_STDOUT(interp), nl);
+        }
+    }
+    else
+        Parrot_io_write_s(interp, _PIO_STDOUT(interp), nl);
+#else
+    if (s)
+        Parrot_io_write_s(interp, _PIO_STDOUT(interp), s);
+    Parrot_io_write_s(interp, _PIO_STDOUT(interp), nl);
+#endif
+
 }
 
 op say(invar PMC) :base_io {
@@ -123,10 +171,28 @@ op say(invar PMC) :base_io {
         goto ADDRESS(handler);
     }
     else {
-        STRING * const s = VTABLE_get_string(interp, p);
+        STRING * const s  = VTABLE_get_string(interp, p);
+        STRING * const nl = Parrot_str_new_constant(interp, "\n");
+
+#ifdef PARROT_HAS_THREADS
+        if (s) {
+            int len = STRING_IS_NULL(s) ? 0 : s->bufused;
+            if (len < 80) {
+                Parrot_io_write_s(interp, _PIO_STDOUT(interp),
+                                Parrot_str_concat(interp, s, nl));
+            }
+            else {
+                Parrot_io_write_s(interp, _PIO_STDOUT(interp), s);
+                Parrot_io_write_s(interp, _PIO_STDOUT(interp), nl);
+            }
+        }
+        else
+            Parrot_io_write_s(interp, _PIO_STDOUT(interp), nl);
+#else
         if (s)
-            Parrot_io_putps(interp, _PIO_STDOUT(interp), s);
-        Parrot_io_putps(interp, _PIO_STDOUT(interp), Parrot_str_new_constant(interp, "\n"));
+            Parrot_io_write_s(interp, _PIO_STDOUT(interp), s);
+        Parrot_io_write_s(interp, _PIO_STDOUT(interp), nl);
+#endif
     }
 }
 
@@ -150,27 +216,27 @@ Print $2 on the IO stream object $1.
 op print(invar PMC, in INT) :base_io {
     if ($1) {
         STRING * const s = Parrot_str_from_int(interp, $2);
-        Parrot_io_putps(interp, $1, s);
+        Parrot_io_write_s(interp, $1, s);
     }
 }
 
 op print(invar PMC, in NUM) :base_io {
     if ($1) {
         STRING * const s = Parrot_sprintf_c(interp, FLOATVAL_FMT, $2);
-        Parrot_io_putps(interp, $1, s);
+        Parrot_io_write_s(interp, $1, s);
     }
 }
 
 op print(invar PMC, in STR) :base_io {
     if ($2 && $1) {
-        Parrot_io_putps(interp, $1, $2);
+        Parrot_io_write_s(interp, $1, $2);
     }
 }
 
 op print(invar PMC, invar PMC) :base_io {
     if ($2 && $1) {
         STRING * const s = VTABLE_get_string(interp, $2);
-        Parrot_io_putps(interp, $1, s);
+        Parrot_io_write_s(interp, $1, s);
     }
 }
 
@@ -188,6 +254,8 @@ store it in $1
 
 Create a new ParrotIO object for the stderr file descriptor and
 store it in $1
+
+=back
 
 =cut
 

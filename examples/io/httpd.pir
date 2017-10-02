@@ -1,4 +1,4 @@
-# Copyright (C) 2006-2008, Parrot Foundation.
+# Copyright (C) 2006-2010, Parrot Foundation.
 
 =head1 NAME
 
@@ -153,7 +153,7 @@ MORE:
 
     ret = length buf
     if ret <= 0 goto SERVE_REQ
-    concat req, buf
+    req = concat req, buf
     index pos, req, CRLFCRLF
     # print "\npos1:"
     # print pos
@@ -224,12 +224,12 @@ SERVE_file:
     set_addr eh, handle_404_exception
     eh.'handle_types'(.EXCEPTION_PIO_ERROR)
     push_eh eh
-    fp = open url, 'r'
+    fp = open url, 'rb'
     pop_eh
     unless fp goto SERVE_404
     len = stat url, .STAT_FILESIZE
     read file_content, fp, len
-
+    close fp
 SERVE_blob:
     response = '200 OK'
     send_response(work, response, headers, file_content)
@@ -349,7 +349,7 @@ START:
     inc pos_in
 
 INC_IN:
-    concat out, char_out
+    out = concat out, char_out
     inc pos_in
     goto START
 END:

@@ -1,5 +1,5 @@
 
-=head1 Combiner Example
+=head1 DESCRIPTION
 
 This example shows the usage of C<Stream::Combiner>.
 
@@ -25,7 +25,7 @@ Creates the 3 Stream objects and dumps the combined stream.
 
 =cut
 
-.sub _main
+.sub _main :main
     .local pmc counter
     .local pmc text
     .local pmc combined
@@ -87,7 +87,7 @@ LOOP:
 The _text sub is used as a source of the text stream.
 It just writes some text to the stream.
 
-The stream is automatically diconnected when the sub returns, which
+The stream is automatically disconnected when the sub returns, which
 will also terminate the combined stream.
 
 =cut
@@ -115,9 +115,9 @@ of the Combiner stream.
     .local string ret
 
     ret = strings[0]
-    concat ret, " "
+    ret = concat ret, " "
     str = strings[1]
-    concat ret, str
+    ret = concat ret, str
 
     .return(ret)
 .end
@@ -132,7 +132,7 @@ Please send patches and suggestions to the Perl 6 Internals mailing list.
 
 =head1 COPYRIGHT
 
-Copyright (C) 2004-2009, Parrot Foundation.
+Copyright (C) 2004-2010, Parrot Foundation.
 
 =cut
 

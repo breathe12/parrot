@@ -1,18 +1,18 @@
 #!perl
-# Copyright (C) 2001-2005, Parrot Foundation.
+# Copyright (C) 2001-2011, Parrot Foundation.
 
 use strict;
 use warnings;
 
-use Test::More tests => 31;
+use Test::More tests => 34;
 use Carp;
 use Cwd;
 use File::Basename qw(basename dirname);
 use File::Temp 0.13 qw/ tempfile /;
 use File::Spec;
 use lib qw( lib t/configure/testlib );
-use IO::CaptureOutput qw | capture |;
 use Tie::Filehandle::Preempt::Stdin;
+use Parrot::Configure::Utils qw(_slurp capture);
 
 BEGIN { use Parrot::Configure::Utils; }
 
@@ -40,10 +40,8 @@ can_ok( 'Tie::Filehandle::Preempt::Stdin', ('READLINE') );
 isa_ok( $object, 'Tie::Filehandle::Preempt::Stdin' );
 $cc = q{gcc-3.3};
 {
-    my $rv;
-    my $stdout;
-       capture ( sub { $rv = prompt( "What C compiler do you want to use?", $cc ) },
-           \$stdout );
+    my ($rv, $stdout) =
+       capture ( sub { prompt( "What C compiler do you want to use?", $cc ) } );
     ok( $stdout, "prompts were captured" );
     is( $rv, $cc, "Empty response to prompt led to expected return value" );
 }
@@ -148,7 +146,7 @@ like(
     chmod 0777, $fname;
     my $prog = basename($fname);
 
-    is( check_progs($prog), $prog, "check_progs() returns the proper program" )
+    is( check_progs($prog), $prog, "check_progs() returns the proper program" );
 }
 
 {
@@ -164,7 +162,7 @@ like(
     my $prog = basename($fname);
 
     is( check_progs( [$prog] ),
-        $prog, "check_progs() returns the proper program when passed an array ref" )
+        $prog, "check_progs() returns the proper program when passed an array ref" );
 }
 
 {
@@ -189,31 +187,45 @@ like(
     my $prog = basename($fname);
 
     my $verbose = 1;
-    my $stdout;
-    capture ( sub { is( check_progs( $prog, $verbose ),
-                $prog, "check_progs() returns the proper program" ) }, \$stdout );
+    my ($rv, $stdout) =
+      capture ( sub { is( check_progs( $prog, $verbose ),
+                          $prog, "check_progs() returns the proper program" ) } );
     like( $stdout, qr/checking for program/, "Got expected verbose output" );
 }
 
 {
     my $verbose = 1;
-    my $stdout;
-    my $prog ;
-    capture ( sub { $prog = check_progs(
-             [ 'gmake', 'mingw32-make', 'nmake', 'make' ], $verbose) }, \$stdout );
+    my ($prog, $stdout) =
+      capture ( sub { check_progs
+                      ( [ 'gmake', 'mingw32-make', 'nmake', 'dmake', 'make' ],
+                        $verbose) } );
     ok( defined($prog), "check_progs() returned a 'make' program" );
     like( $stdout, qr/checking for program/s, "Got expected verbose output" );
     like( $stdout, qr/$prog(\.EXE)? is executable/s,
         "Got expected verbose output for executable program" );
 }
 
-# _slurp(), not exported
+# print_to_cache(); read_from_cache()
+
+{
+    my ( $fh, $file ) = tempfile( UNLINK => 1 );
+    my $value = 'foobar';
+    ok( print_to_cache( $file, $value ),
+        "print_to_cache() returned true value" );
+    is( _slurp($file),
+        "$value\n",
+        "Correct value printed to cachefile"
+    );
+    is( read_from_cache( $file ), $value,
+        "Got expected value from read_from_cache()"
+    );
+}
 
 {
     my ( $tmpfile, $fname ) = tempfile( UNLINK => 1 );
     print $tmpfile "foo" x 1000;
     $tmpfile->flush;
-    is( Parrot::Configure::Utils::_slurp($fname), "foo" x 1000, "_slurp() slurped the file" );
+    is( _slurp($fname), "foo" x 1000, "_slurp() slurped the file" );
 }
 
 ################### DOCUMENTATION ###################

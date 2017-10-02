@@ -1,5 +1,5 @@
 #!perl
-# Copyright (C) 2001-2008, Parrot Foundation.
+# Copyright (C) 2001-2017, Parrot Foundation.
 
 use strict;
 use warnings;
@@ -8,10 +8,9 @@ use vars qw($TODO);
 
 use Test::More;
 use Parrot::Config;
-use Parrot::Test tests => 35;
+use Parrot::Test tests => 41;
 
 pir_output_is( <<'CODE', <<'OUT', "globalconst 1" );
-
 .sub 'main' :main
     .globalconst int N = 5
     _main()
@@ -145,6 +144,7 @@ ok 3
 OUT
 
 pasm_output_is( <<'CODE', <<'OUT', "const I/N mismatch" );
+.pcc_sub :main main:
     set I0, 2.0
     print I0
     print "\n"
@@ -197,7 +197,7 @@ pir_output_is( <<'CODE', <<'OUT', 'PIR heredocs: accepts inline with concat' );
     $S0 = ""
     $I0 = 0
 LOOP:
-    concat $S0, <<"end"
+    $S0 = concat $S0, <<"end"
 ending
 end
     inc $I0
@@ -489,31 +489,31 @@ CODE
 OUT
 
 pir_output_is(
-    <<'CODE', <<'OUT', "PIR heredoc: escaped characters, escaped quotes, starting quotes" );
+    <<'CODE', <<"OUT", "PIR heredoc: escaped characters, escaped quotes, starting quotes" );
 .sub test :main
 	.local string test
 
 	test = <<"TEST"
 { \{ \\{
-w \w \\w
+w \a \\w
 " \" \\"
 { \{ \\{
-w \w \\w
+w \a \\w
 " \" \\"
 { \{ \\{
-w \w \\w
+w \a \\w
 TEST
 	print test
 .end
 CODE
-{ { \{
-w w \w
-" " \"
-{ { \{
-w w \w
-" " \"
-{ { \{
-w w \w
+{ { \\{
+w \a \\w
+" " \\"
+{ { \\{
+w \a \\w
+" " \\"
+{ { \\{
+w \a \\w
 OUT
 
 pir_output_is( <<'CODE', <<'OUT', "heredoc not eol 1" );
@@ -575,7 +575,7 @@ OUT
 
 pir_output_is( <<'CODE', <<'OUT', "const int" );
 .const int c = 12
-.sub test
+.sub test :main
     .local num a
     a = 96
     # Uncomment this line, and the c symbol is 'forgotten'
@@ -600,6 +600,81 @@ pir_error_output_like( <<'CODE', <<'OUT', "" );
 .end
 CODE
 /^error:imcc:syntax error, duplicated IDENTIFIER/
+OUT
+
+pir_error_output_like( <<'CODE', <<'OUT', "invalid FixedIntegerArray" );
+.sub 'invalid'
+   .const 'FixedIntegerArray' $P0 = 'garbage'
+.end
+CODE
+/FixedIntegerArray initialization/
+OUT
+
+pir_error_output_like( <<'CODE', <<'OUT', "FixedIntegerArray: forgot a comma" );
+.sub 'invalid'
+   .const 'FixedIntegerArray' $P0 = '(1 2)'
+.end
+CODE
+/FixedIntegerArray initialization/
+OUT
+
+pir_error_output_like( <<'CODE', <<'OUT', "FixedIntegerArray: extra character" );
+.sub 'invalid'
+   .const 'FixedIntegerArray' $P0 = '(1d)'
+.end
+CODE
+/FixedIntegerArray initialization/
+OUT
+
+pir_output_is( <<'CODE', <<'OUT', "valid FixedIntegerArray" );
+.sub 'main' :main
+   .const 'FixedIntegerArray' $P0 = ' (0, 1,0b10 , 010, 0x10 ) '
+   $I0 = $P0[0]
+   say $I0
+   $I0 = $P0[1]
+   say $I0
+   $I0 = $P0[2]
+   say $I0
+   $I0 = $P0[3]
+   say $I0
+   $I0 = $P0[4]
+   say $I0
+.end
+CODE
+0
+1
+2
+8
+16
+OUT
+
+pir_error_output_like( <<'CODE', <<'OUT', "wrong const type [GH #996]" );
+.sub main
+  .const pmc a = "b"
+  .return(a)
+.end
+CODE
+/wrong .const value/
+OUT
+
+#skip WONTFIX :immediate has empty globals by definition
+#pir_exit_code_is( <<'CODE', 1, "missing const Sub in immediate will SEGV", todo => "[TT #1324, GH #1024]");
+#.sub baz :immediate :anon
+#  .const "Sub" foo = "foo"
+#  $P1 = foo."new"()
+#.end
+#CODE
+#was:
+#/Method 'new' not found for non-object/
+#OUT
+
+# TODO: This really should just exit with Divide by zero, as parrot_old did
+pir_error_output_like( <<'CODE', <<'OUT', 'exception in constant folding [GH #1236]')
+.sub a
+  $N0=0//0
+.end
+CODE
+/error:imcc:The opcode 'fdiv_n_ic_ic' \(fdiv<3>\) was not found/
 OUT
 
 # Local Variables:

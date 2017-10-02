@@ -1,92 +1,101 @@
-# Copyright (C) 2002-2010, Parrot Foundation.
+# Copyright (C) 2002-2015, Parrot Foundation.
 
 This is a list of project roles, with a partial list of the folks who have
 taken responsibility for them.  This does not list all the people with
 commit access, just those who have a role they've taken responsibility
-for.
+for. This document is mostly for historic purposes, see CREDITS for the
+full details of all contributors.
 
 See docs/project/roles_responsibilities.pod for role definitions, and
-https://trac.parrot.org/parrot/wiki/Languages for language authors/maintainers.
+https://github.com/parrot/parrot/wiki/Languages for language authors/maintainers.
 
 
 Project Team
 ------------
 
-Architect                       Allison Randal
+Community Ambassador            Jonathan "Duke" Leto
 
 Release Manager                 Bob Rogers
                                 Patrick Michaud
                                 Bernhard Schmalhofer
                                 Jerry Gay
-                                chromatic
                                 Will Coleda
                                 Andrew Whitworth
                                 Klaas-Jan Stol
                                 Francois Perrad
                                 Mark Glines
                                 Christoph Otto
-                                Jonathan Leto
+                                Jonathan "Duke" Leto
                                 Gerd Pokorra
                                 Michael Hind
                                 Tyler Curtis
+                                James E Keenan
+                                Kevin Polulak
+                                Alvis Yardley
+                                Reini Urban
+                                Bruce Gray
 
 Metacommitter                   Allison Randal
                                 Jerry Gay
                                 Will Coleda
-                                chromatic
                                 Jeff Horwitz
+                                Andrew Whitworth
+                                James E Keenan
+                                Jonathan "Duke" Leto
+                                Julian Albo
 
 
 Committers
 ----------
 
-Core Developer                  Jonathan Worthington
+Core Developer
+                                Andrew Whitworth
+                                Reini Urban
                                 Bernhard Schmalhofer
                                 Kevin Tew
+                                Jonathan Worthington
                                 Bob Rogers
                                 Nuno Carvalho
-                                chromatic
                                 Allison Randal
-                                Andrew Whitworth
                                 Christoph Otto
                                 Julian Albo
                                 Mark Glines
                                 Vasily Chekalkin
-                                Jonathan Leto
+                                Jonathan "Duke" Leto
+                                Alvis Yardley
+                                Brian Gernhardt
 
 Compiler Developer              Patrick Michaud (PGE, PCT)
                                 Allison Randal (TGE)
 
 Platform Porter                 Allison Randal (Debian, Ubuntu)
                                 Francois Perrad (MinGW32)
-                                Reini Urban (cygwin)
+                                Reini Urban (all)
                                 Will Coleda (MacPorts)
                                 Jerry Gay (Windows)
                                 Gerd Pokorra (Fedora)
 
-
-Patch Monster                   chromatic
-                                Jonathan Worthington
+Patch Monster                   Jonathan Worthington
                                 Jerry Gay
                                 Will Coleda
-                                James Keenan
+                                James E Keenan
                                 Francois Perrad
                                 Christoph Otto
                                 Julian Albo
                                 Mark Glines
-                                Jonthan Leto
+                                Jonthan "Duke" Leto
 
 
 Contributors
 ------------
 
-Cage Cleaner                    James Keenan
+Cage Cleaner                    James E Keenan
                                 Jerry Gay
-                                chromatic
                                 Andy Lester
                                 Francois Perrad
                                 Mark Glines
                                 Bruce Gray
                                 Michael Hind
+                                Alvis Yardley
 
 General Contributor             See CREDITS

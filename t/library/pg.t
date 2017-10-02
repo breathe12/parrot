@@ -20,6 +20,7 @@ table, which should be created by your sysadmin.
 
 ## XXX
 ## .include 'postgres.pasm'
+.include 'iglobals.pasm'
 .const int CONNECTION_OK = 0
 
 .const int PGRES_COMMAND_OK = 1
@@ -29,7 +30,18 @@ table, which should be created by your sysadmin.
     load_bytecode 'Test/Builder.pir'
     .local pmc test
     test = new [ 'Test'; 'Builder' ]
-    test.'plan'(N_TESTS)
+    $P0 = getinterp
+    $P1 = $P0[.IGLOBALS_CONFIG_HASH]
+    $I1 = $P1['HAS_EXTRA_NCI_THUNKS']
+
+    if $I1 == 1 goto have_enough_nci
+
+    test.'skip_all'('Extra NCI thunks not available')
+    test.'finish'()
+    exit 0
+
+  have_enough_nci:
+    test.'plan'('no_plan')
     push_eh no_pg
 
     # TODO: fix when exception handling works again
@@ -40,23 +52,31 @@ table, which should be created by your sysadmin.
  have_lib:
     load_bytecode 'postgres.pir'
     pop_eh
-    test.'ok'(1, 'load_bytecode')
     load_bytecode 'Pg.pir'
-    test.'ok'(1, 'load_bytecode Pg')
 
     .local pmc cl, con, res
     cl = new 'Pg'
-    test.'ok'(1, 'Pg class exists')
+
     con = cl.'connectdb'('')           # assume table = user is present
     $I0 = isa con, ['Pg'; 'Conn']
-    test.'ok'($I0, 'con isa Pg;Conn')
-    $I0 = istrue con
+    $I1 = istrue con
 
-    if $I0 goto have_connected
-	test.'skip'( 39, 'no Pg connection; skipping remaining tests' )
-	.return()
+    if $I1 goto have_connected
+        test.'plan'(5)
+        test.'ok'(1, 'load_bytecode postgres')
+        test.'ok'(1, 'load_bytecode Pg')
+        test.'ok'(1, 'Pg class exists')
+        test.'ok'($I0, 'con isa Pg;Conn')
+        test.'skip'(1, 'no Pg connection; skipping remaining tests')
+        test.'finish'()
+        exit 0
 
   have_connected:
+    test.'ok'(1, 'load_bytecode postgres')
+    test.'ok'(1, 'load_bytecode Pg')
+    test.'ok'(1, 'Pg class exists')
+    test.'ok'($I0, 'con isa Pg;Conn')
+
     test.'ok'($I0, 'con is true after connect')
     $I0 = con.'status'()
     $I1 = iseq $I0, CONNECTION_OK
@@ -230,7 +250,8 @@ no_pg:
     .local string msg
     .get_results(ex)
     msg = ex
-    test.'skip'(N_TESTS)
+    test.'plan'(1)
+    test.'skip'(1, 'loadlib pg failed')
     test.'finish'()
 .end
 
@@ -244,11 +265,12 @@ no_pg:
     $I0 = $S0 == 'UnManagedStruct'
     test.'ok'($I0, 'notice callback got a struct')
 
+
     .local pmc st
     st = get_root_global ['parrot';'Pg'], 'PQresultStatus'
     $I0 = st(res)
     $I1 = iseq $I0, PGRES_COMMAND_OK
-    test.'ok'($I1, 'notice result is still ok')
+    test.'todo'($I1, 'notice result is still ok')
 .end
 
 # Local Variables:

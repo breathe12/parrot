@@ -1,6 +1,6 @@
 # Copyright (C) 2005-2009, Parrot Foundation.
 
-=head1 TITLE
+=head1 DESCRIPTION
 
 PGE::Exp - base class for expressions
 
@@ -90,6 +90,7 @@ C<target> adverbs.
   bytecode:
     $P0 = compreg 'PIR'
     $P1 = $P0(code)
+    $P1 = $P1.'first_sub_in_const_table'()
   make_grammar:
     if grammar == '' goto end
     .local pmc p6meta
@@ -140,8 +141,8 @@ tree as a PIR code object that can be compiled.
     if null $P0 goto have_subid
     $S0 = escape($P0)
     pirflags = concat pirflags, ' :subid('
-    concat pirflags, $S0
-    concat pirflags, ')'
+    pirflags = concat pirflags, $S0
+    pirflags = concat pirflags, ')'
   have_subid:
 
     ##   Perform reduction/optimization on the
@@ -327,9 +328,18 @@ tree as a PIR code object that can be compiled.
     push captsave, 'captscope['
         push captsave, cname
         push captsave, "] = captob\n"
+    # TODO GH #1154 check for invalid cname index
+    push captback, '$I5 = exists captscope['
+        push captback, cname
+        push captback, "]\n"
+    push captback, 'unless $I5, '
+        push captback, label
+        push captback, "_nodel\n"
     push captback, 'delete captscope['
         push captback, cname
         push captback, "]\n"
+    push captback, label
+        push captback, "_nodel:\n"
     goto end
   capt_array:
     push captsave, '$P2 = captscope['
@@ -444,7 +454,7 @@ tree as a PIR code object that can be compiled.
     if $I0 != $I1 goto concat_lit_shift
     $S0 = exp0.'ast'()
     $S1 = exp1.'ast'()
-    concat $S0, $S1
+    $S0 = concat $S0, $S1
     exp0.'!make'($S0)
     goto concat_lit_loop
   concat_lit_shift:
@@ -1272,6 +1282,7 @@ tree as a PIR code object that can be compiled.
           dec rep
           goto %L_2
         CODE
+    .return (1)
 
 .end
 
@@ -1524,6 +1535,7 @@ tree as a PIR code object that can be compiled.
           unless null $P1 goto %0_1
           $P1 = compreg %1
           $P1 = $P1($S1)
+          $P1 = $P1.'first_sub_in_const_table'()
           $P0[$S1] = $P1
         %0_1:
         CODE
@@ -1595,6 +1607,9 @@ tree as a PIR code object that can be compiled.
     .return ()
 .end
 
+=back
+
+=cut
 
 # Local Variables:
 #   mode: pir

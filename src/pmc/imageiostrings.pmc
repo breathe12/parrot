@@ -1,9 +1,9 @@
 /*
-Copyright (C) 2010, Parrot Foundation.
+Copyright (C) 2010-2014, Parrot Foundation.
 
 =head1 NAME
 
-src/pmc/imageiosize.pmc - ImageIOStrings PMC
+src/pmc/imageiostrings.pmc - ImageIOStrings PMC
 
 =head1 DESCRIPTION
 
@@ -46,7 +46,7 @@ Initializes the PMC.
 
         PARROT_IMAGEIOSTRINGS(SELF)->seen = Parrot_pmc_new(INTERP, enum_class_Hash);
         VTABLE_set_pointer(INTERP, PARROT_IMAGEIOSTRINGS(SELF)->seen,
-            parrot_new_intval_hash(INTERP));
+            Parrot_hash_new_intval_hash(INTERP));
 
         PARROT_IMAGEIOSTRINGS(SELF)->list = Parrot_pmc_new(INTERP, enum_class_ResizableStringArray);
 
@@ -62,7 +62,7 @@ Marks the PMC as alive.
 =cut
 
 */
-    VTABLE void mark() {
+    VTABLE void mark() :no_wb {
         Parrot_gc_mark_PMC_alive(INTERP, PARROT_IMAGEIOSTRINGS(SELF)->todo);
         Parrot_gc_mark_PMC_alive(INTERP, PARROT_IMAGEIOSTRINGS(SELF)->seen);
         Parrot_gc_mark_PMC_alive(INTERP, PARROT_IMAGEIOSTRINGS(SELF)->list);
@@ -78,22 +78,9 @@ Gets the result PMC after a thaw.
 
 */
 
-    VTABLE PMC *get_pmc() {
+    VTABLE PMC *get_pmc() :no_wb {
+        UNUSED(INTERP)
         return PARROT_IMAGEIOSTRINGS(SELF)->list;
-    }
-
-/*
-
-=item C<VTABLE PMC *get_iter()>
-
-Get the C<todo> list for this freeze/thaw for iterating over.
-
-=cut
-
-*/
-
-    VTABLE PMC *get_iter() {
-        return PARROT_IMAGEIOSTRINGS(SELF)->todo;
     }
 
 /*
@@ -106,7 +93,9 @@ Returns the flags describing the visit action
 
 */
 
-    VTABLE INTVAL get_integer() {
+    VTABLE INTVAL get_integer() :no_wb {
+        UNUSED(INTERP)
+        UNUSED(SELF)
         return VISIT_FREEZE_NORMAL;
     }
 
@@ -121,7 +110,11 @@ Do nothing.
 
 */
 
-    VTABLE void push_integer(INTVAL v) { }
+    VTABLE void push_integer(INTVAL v) :no_wb {
+        UNUSED(INTERP)
+        UNUSED(SELF)
+        UNUSED(v)
+    }
 
 
 /*
@@ -134,7 +127,11 @@ Do nothing.
 
 */
 
-    VTABLE void push_float(FLOATVAL v) { }
+    VTABLE void push_float(FLOATVAL v) :no_wb {
+        UNUSED(INTERP)
+        UNUSED(SELF)
+        UNUSED(v)
+    }
 
 
 /*
@@ -147,8 +144,7 @@ Adds the string to the list of strings.
 
 */
 
-    VTABLE void push_string(STRING *v)
-    {
+    VTABLE void push_string(STRING *v) :manual_wb {
         VTABLE_push_string(INTERP, PARROT_IMAGEIOSTRINGS(SELF)->list, v);
     }
 
@@ -162,23 +158,30 @@ Checks new pmcs for strings.
 
 */
 
-    VTABLE void push_pmc(PMC *v) {
+    VTABLE void push_pmc(PMC *v) :manual_wb {
         if (!PMC_IS_NULL(v)) {
             Hash * const hash    = (Hash *)VTABLE_get_pointer(INTERP,
                                                 PARROT_IMAGEIOSTRINGS(SELF)->seen);
-            HashBucket * const b = parrot_hash_get_bucket(INTERP, hash, v);
+            HashBucket * const b = Parrot_hash_get_bucket(INTERP, hash, v);
             if (!b) {
                 /* not yet seen */
-                parrot_hash_put(INTERP, hash, v, v);
+                Parrot_hash_put(INTERP, hash, v, v);
                 VTABLE_push_pmc(INTERP, PARROT_IMAGEIOSTRINGS(SELF)->todo, v);
             }
+            else
+                PARROT_GC_WRITE_BARRIER(INTERP, SELF);
         }
     }
 
-    VTABLE void set_pmc(PMC *p)
-    {
+    VTABLE void set_pmc(PMC *p) :manual_wb {
+        PMC * const todo = PARROT_IMAGEIOSTRINGS(SELF)->todo;
         STATICSELF.push_pmc(p);
-        Parrot_visit_loop_visit(INTERP, SELF);
+        while (VTABLE_elements(INTERP, todo)) {
+            PMC * const current = VTABLE_shift_pmc(INTERP, todo);
+            VTABLE_freeze(INTERP, current, SELF);
+            VTABLE_visit(INTERP,  current, SELF);
+            SELF.push_pmc(PMC_metadata(current));
+        }
     }
 
 /*

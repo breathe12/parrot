@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2004-2010, Parrot Foundation.
+Copyright (C) 2004-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -264,10 +264,10 @@ encoding_index(PARROT_INTERP, ARGIN(const STRING *src),
 /*
 
 =item C<INTVAL encoding_rindex(PARROT_INTERP, const STRING *src, const STRING
-*search_string, INTVAL offset)>
+*search, INTVAL offset)>
 
 Finds the last index of substring C<search_string> in STRING C<src>,
-starting from C<offset>. Not implemented.
+starting from C<offset>.
 
 =cut
 
@@ -275,13 +275,56 @@ starting from C<offset>. Not implemented.
 
 PARROT_WARN_UNUSED_RESULT
 INTVAL
-encoding_rindex(PARROT_INTERP, SHIM(const STRING *src),
-        SHIM(const STRING *search_string), SHIM(INTVAL offset))
+encoding_rindex(PARROT_INTERP, ARGIN(const STRING *src),
+        ARGIN(const STRING *search), INTVAL offset)
 {
     ASSERT_ARGS(encoding_rindex)
-    /* TODO: https://trac.parrot.org/parrot/wiki/StringsTasklist Implement this. */
-    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNIMPLEMENTED,
-        "Unicode rindex not implemented");
+    String_iter search_iter, search_start, start;
+    const UINTVAL len = search->strlen;
+    UINTVAL c0;
+    INTVAL  skip;
+
+    if (offset < 0
+    ||  len == 0
+    ||  src->strlen < len)
+        return -1;
+
+    skip = src->strlen - len;
+
+    if (offset < skip)
+        skip = offset;
+
+    STRING_ITER_INIT(interp, &start);
+    STRING_iter_skip(interp, src, &start, skip);
+
+    STRING_ITER_INIT(interp, &search_start);
+    c0 = STRING_iter_get_and_advance(interp, search, &search_start);
+
+    while (1) {
+        UINTVAL c1 = STRING_iter_get(interp, src, &start, 0);
+
+        if (c1 == c0) {
+            UINTVAL c2;
+            String_iter iter = start;
+
+            STRING_iter_skip(interp, src, &iter, 1);
+            search_iter = search_start;
+
+            do {
+                if (search_iter.charpos >= len)
+                    return start.charpos;
+                c1 = STRING_iter_get_and_advance(interp, src, &iter);
+                c2 = STRING_iter_get_and_advance(interp, search, &search_iter);
+            } while (c1 == c2);
+        }
+
+        if (start.charpos == 0)
+            break;
+
+        STRING_iter_skip(interp, src, &start, -1);
+    }
+
+    return -1;
 }
 
 
@@ -350,6 +393,9 @@ u_iscclass(PARROT_INTERP, UINTVAL codepoint, INTVAL flags)
     if ((flags & enum_cclass_alphanumeric) && u_isalnum(codepoint))  return 1;
     if ((flags & enum_cclass_word)         &&
         (u_isalnum(codepoint) || codepoint == '_'))                  return 1;
+    if ((flags & enum_cclass_newline)      &&
+        (codepoint == 0x2028 || codepoint == 0x2029 ||
+         u_hasBinaryProperty(codepoint, UCHAR_LINE_BREAK)))          return 1;
 
     return 0;
 #else
@@ -406,8 +452,14 @@ u_iscclass(PARROT_INTERP, UINTVAL codepoint, INTVAL flags)
         if (codepoint >= 0xff10 && codepoint <= 0xff19) return 1;
     }
 
+    if (flags & enum_cclass_newline) {
+        /* from http://www.unicode.org/Public/UNIDATA/extracted/DerivedLineBreak.txt
+         * Line_Break=Mandatory_Break*/
+        if (codepoint == 0x2028 || codepoint == 0x2029) return 1;
+    }
+
     if (flags & ~(enum_cclass_whitespace | enum_cclass_numeric | enum_cclass_newline))
-        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_LIBRARY_ERROR,
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_LIBRARY_ERROR,
             "no ICU lib loaded");
 
     return 0;
@@ -426,6 +478,7 @@ C<offset> is the wrong offset into the string C<s>.
 
 */
 
+PARROT_DOES_NOT_RETURN
 void
 encoding_ord_error(PARROT_INTERP, ARGIN(const STRING *s), INTVAL offset)
 {
@@ -439,8 +492,10 @@ encoding_ord_error(PARROT_INTERP, ARGIN(const STRING *s), INTVAL offset)
         err_msg = "Cannot get character past end of string";
     else if (offset < 0)
         err_msg = "Cannot get character before beginning of string";
+    else
+        err_msg = "Unknown encoding_ord_error";
 
-    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_ORD_OUT_OF_STRING,
+    Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_ORD_OUT_OF_STRING,
         err_msg);
 }
 
@@ -455,6 +510,8 @@ C<count>.
 
 =cut
 
+Note: The utf8 part is high-cost in perl6. utf8_iter_skip consumes about 10x more
+time than all other functions. GH #1097
 */
 
 PARROT_CANNOT_RETURN_NULL
@@ -475,7 +532,7 @@ encoding_substr(PARROT_INTERP, ARGIN(const STRING *src), INTVAL offset, INTVAL l
         if ((UINTVAL)offset == strlen || length <= 0)
             return Parrot_str_new_constant(interp, "");
 
-        Parrot_ex_throw_from_c_args(interp, NULL,
+        Parrot_ex_throw_from_c_noargs(interp,
             EXCEPTION_SUBSTR_OUT_OF_STRING,
             "Cannot take substr outside string");
     }
@@ -560,8 +617,21 @@ encoding_find_cclass(PARROT_INTERP, INTVAL flags, ARGIN(const STRING *src),
     UINTVAL     codepoint;
     UINTVAL     end = offset + count;
 
-    STRING_ITER_INIT(interp, &iter);
-    STRING_iter_skip(interp, src, &iter, offset);
+    static UINTVAL last_char_offset;
+    static String_iter cached_iter;
+    static STRING *last_string = 0;
+
+    if (last_string == src && offset > last_char_offset) {
+        iter = cached_iter;
+        STRING_iter_skip(interp, src, &iter, offset - last_char_offset);
+    }
+    else if (last_string == src && offset == last_char_offset) {
+        iter = cached_iter;
+    }
+    else {
+        STRING_ITER_INIT(interp, &iter);
+        STRING_iter_skip(interp, src, &iter, offset);
+    }
 
     end = src->strlen < end ? src->strlen : end;
 
@@ -569,15 +639,22 @@ encoding_find_cclass(PARROT_INTERP, INTVAL flags, ARGIN(const STRING *src),
         codepoint = STRING_iter_get_and_advance(interp, src, &iter);
         if (codepoint >= 256) {
             if (u_iscclass(interp, codepoint, flags))
-                    return iter.charpos - 1;
+                goto return_and_cache;
         }
         else {
             if (Parrot_iso_8859_1_typetable[codepoint] & flags)
-                return iter.charpos - 1;
+                goto return_and_cache;
         }
     }
 
     return end;
+return_and_cache:
+    if (iter.charpos > 128) {
+        last_char_offset = iter.charpos;
+        cached_iter = iter;
+        last_string = (STRING*)PTR2INTVAL(src);
+    }
+    return iter.charpos - 1;
 }
 
 
@@ -603,15 +680,27 @@ encoding_find_not_cclass(PARROT_INTERP, INTVAL flags, ARGIN(const STRING *src),
     UINTVAL     end = offset + count;
     int         bit;
 
+    static UINTVAL last_char_offset;
+    static String_iter cached_iter;
+    static STRING *last_string = 0;
+
     if (offset > src->strlen) {
         /* XXX: Throw in this case? */
         return offset + count;
     }
 
-    STRING_ITER_INIT(interp, &iter);
-
-    if (offset)
-        STRING_iter_skip(interp, src, &iter, offset);
+    if (last_string == src && offset > last_char_offset) {
+        iter = cached_iter;
+        STRING_iter_skip(interp, src, &iter, offset - last_char_offset);
+    }
+    else if (last_string == src && offset == last_char_offset) {
+        iter = cached_iter;
+    }
+    else {
+        STRING_ITER_INIT(interp, &iter);
+        if (offset)
+            STRING_iter_skip(interp, src, &iter, offset);
+    }
 
     end = src->strlen < end ? src->strlen : end;
 
@@ -624,16 +713,23 @@ encoding_find_not_cclass(PARROT_INTERP, INTVAL flags, ARGIN(const STRING *src),
             for (bit = enum_cclass_uppercase;
                     bit <= enum_cclass_word ; bit <<= 1) {
                 if ((bit & flags) && !u_iscclass(interp, codepoint, bit))
-                    return iter.charpos - 1;
+                    goto return_and_cache;
             }
         }
         else {
             if (!(Parrot_iso_8859_1_typetable[codepoint] & flags))
-                return iter.charpos - 1;
+                goto return_and_cache;
         }
     }
 
     return end;
+return_and_cache:
+    if (iter.charpos > 128) {
+        last_char_offset = iter.charpos;
+        cached_iter = iter;
+        last_string = (STRING*)PTR2INTVAL(src);
+    }
+    return iter.charpos - 1;
 }
 
 
@@ -669,13 +765,13 @@ Decompose function. This function is not yet implemented.
 
 */
 
-PARROT_CANNOT_RETURN_NULL
+PARROT_DOES_NOT_RETURN
 STRING*
 encoding_decompose(PARROT_INTERP, SHIM(const STRING *src))
 {
     ASSERT_ARGS(encoding_decompose)
     /* TODO: https://trac.parrot.org/parrot/wiki/StringsTasklist Implement this. */
-    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNIMPLEMENTED,
+    Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_UNIMPLEMENTED,
         "Decompose not implemented");
 }
 
@@ -707,7 +803,7 @@ fixed8_to_encoding(PARROT_INTERP, ARGIN(const STRING *src),
 
             for (i = 0; i < src->strlen; ++i) {
                 if (ptr[i] >= limit)
-                    Parrot_ex_throw_from_c_args(interp, NULL,
+                    Parrot_ex_throw_from_c_noargs(interp,
                         EXCEPTION_LOSSY_CONVERSION,
                         "Lossy conversion to single byte encoding");
             }
@@ -730,7 +826,7 @@ fixed8_to_encoding(PARROT_INTERP, ARGIN(const STRING *src),
             const UINTVAL c = STRING_iter_get_and_advance(interp, src, &iter);
 
             if (c >= limit)
-                Parrot_ex_throw_from_c_args(interp, NULL,
+                Parrot_ex_throw_from_c_noargs(interp,
                     EXCEPTION_LOSSY_CONVERSION,
                     "Lossy conversion to single byte encoding");
 
@@ -869,7 +965,6 @@ fixed8_index(PARROT_INTERP, ARGIN(const STRING *src),
         ARGIN(const STRING *search), INTVAL offset)
 {
     ASSERT_ARGS(fixed8_index)
-    INTVAL retval;
 
     if (STRING_max_bytes_per_codepoint(search) != 1)
         return encoding_index(interp, src, search, offset);
@@ -900,15 +995,15 @@ fixed8_rindex(PARROT_INTERP, ARGIN(const STRING *src),
         ARGIN(const STRING *search_string), INTVAL offset)
 {
     ASSERT_ARGS(fixed8_rindex)
-    INTVAL retval;
 
     if (STRING_max_bytes_per_codepoint(search_string) != 1)
-        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNIMPLEMENTED,
-            "Cross-charset rindex not supported");
+        return encoding_rindex(interp, src, search_string, offset);
 
-    PARROT_ASSERT(STRING_max_bytes_per_codepoint(src) == 1);
-    retval = Parrot_util_byte_rindex(interp, src, search_string, offset);
-    return retval;
+    if (offset < 0
+    ||  !STRING_length(search_string))
+        return -1;
+
+    return Parrot_util_byte_rindex(interp, src, search_string, offset);
 }
 
 
@@ -929,19 +1024,8 @@ fixed8_hash(SHIM_INTERP, ARGIN(const STRING *src), size_t hashval)
     ASSERT_ARGS(fixed8_hash)
     DECL_CONST_CAST;
     STRING * const s = PARROT_const_cast(STRING *, src);
-    const unsigned char *pos;
-    UINTVAL len;
-
-    pos = (const unsigned char *)s->strstart;
-    len = s->strlen;
-
-    while (len--) {
-        hashval += hashval << 5;
-        hashval += *(pos++);
-    }
-
-    s->hashval = hashval;
-
+    const unsigned char *pos = (const unsigned char *)s->strstart;
+    s->hashval = hashval = Parrot_hash_buffer(pos, s->strlen, hashval);
     return hashval;
 }
 
@@ -1003,7 +1087,7 @@ fixed_substr(PARROT_INTERP, ARGIN(const STRING *src), INTVAL offset, INTVAL leng
         if ((UINTVAL)offset == strlen || length <= 0)
             return Parrot_str_new_constant(interp, "");
 
-        Parrot_ex_throw_from_c_args(interp, NULL,
+        Parrot_ex_throw_from_c_noargs(interp,
             EXCEPTION_SUBSTR_OUT_OF_STRING,
             "Cannot take substr outside string");
     }
@@ -1014,6 +1098,12 @@ fixed_substr(PARROT_INTERP, ARGIN(const STRING *src), INTVAL offset, INTVAL leng
         return return_string;
 
     bytes_per_codepoint = src->encoding->max_bytes_per_codepoint;
+    /* gc inf bug GH #1136 */
+#if !defined(NDEBUG) && defined(MEMORY_DEBUG)
+    if (bytes_per_codepoint > 4)
+        fprintf(stderr, "wrong src: %p\n", src);
+#endif
+    PARROT_ASSERT(bytes_per_codepoint <= 4);
     maxlen              = strlen - offset;
 
     if ((UINTVAL)length > maxlen)
@@ -1041,13 +1131,14 @@ Returns Boolean.
 
 PARROT_WARN_UNUSED_RESULT
 INTVAL
-fixed8_is_cclass(PARROT_INTERP, INTVAL flags, ARGIN(const STRING *src), UINTVAL offset)
+fixed8_is_cclass(SHIM_INTERP, INTVAL flags, ARGIN(const STRING *src), UINTVAL offset)
 {
     ASSERT_ARGS(fixed8_is_cclass)
     const unsigned char * const ptr = (unsigned char *)src->strstart;
     UINTVAL codepoint;
 
-    if (offset >= src->strlen) return 0;
+    if (offset >= src->strlen)
+        return 0;
     codepoint = ptr[offset];
 
     return Parrot_iso_8859_1_typetable[codepoint] & flags ? 1 : 0;
@@ -1067,7 +1158,7 @@ Find a character in the given character class.
 
 PARROT_WARN_UNUSED_RESULT
 INTVAL
-fixed8_find_cclass(PARROT_INTERP, INTVAL flags, ARGIN(const STRING *src),
+fixed8_find_cclass(SHIM_INTERP, INTVAL flags, ARGIN(const STRING *src),
         UINTVAL offset, UINTVAL count)
 {
     ASSERT_ARGS(fixed8_find_cclass)
@@ -1100,7 +1191,7 @@ Returns C<INTVAL>.
 
 PARROT_WARN_UNUSED_RESULT
 INTVAL
-fixed8_find_not_cclass(PARROT_INTERP, INTVAL flags, ARGIN(const STRING *src),
+fixed8_find_not_cclass(SHIM_INTERP, INTVAL flags, ARGIN(const STRING *src),
         UINTVAL offset, UINTVAL count)
 {
     ASSERT_ARGS(fixed8_find_not_cclass)
@@ -1153,7 +1244,7 @@ Get the character at C<iter> plus C<offset>.
 */
 
 UINTVAL
-fixed8_iter_get(PARROT_INTERP,
+fixed8_iter_get(SHIM_INTERP,
     ARGIN(const STRING *str), ARGIN(const String_iter *iter), INTVAL offset)
 {
     ASSERT_ARGS(fixed8_iter_get)
@@ -1181,6 +1272,7 @@ fixed8_iter_skip(SHIM_INTERP,
     ARGIN(const STRING *str), ARGMOD(String_iter *iter), INTVAL skip)
 {
     ASSERT_ARGS(fixed8_iter_skip)
+    UNUSED(str)
 
     iter->bytepos += skip;
     iter->charpos += skip;
@@ -1201,8 +1293,7 @@ Moves the string iterator C<i> to the next codepoint.
 */
 
 UINTVAL
-fixed8_iter_get_and_advance(PARROT_INTERP,
-    ARGIN(const STRING *str), ARGMOD(String_iter *iter))
+fixed8_iter_get_and_advance(SHIM_INTERP, ARGIN(const STRING *str), ARGMOD(String_iter *iter))
 {
     ASSERT_ARGS(fixed8_iter_get_and_advance)
     unsigned char * const ptr = (unsigned char *)str->strstart;
@@ -1238,13 +1329,14 @@ fixed8_iter_set_and_advance(PARROT_INTERP,
     UINTVAL limit = str->encoding == Parrot_ascii_encoding_ptr ? 0x80 : 0x100;
 
     if (c >= limit)
-        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_LOSSY_CONVERSION,
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_LOSSY_CONVERSION,
             "Lossy conversion to single byte encoding");
 
     ptr[iter->charpos++] = c;
     iter->bytepos++;
 
-    PARROT_ASSERT(iter->bytepos <= str->bufused);
+    if (str->bufused < iter->bytepos)
+        str->bufused = iter->bytepos;
 }
 
 
@@ -1335,7 +1427,7 @@ unicode_compose(PARROT_INTERP, ARGIN(const STRING *src))
     return dest;
 #else
     UNUSED(src);
-    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_LIBRARY_ERROR,
+    Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_LIBRARY_ERROR,
         "no ICU lib loaded");
 #endif
 }
@@ -1344,6 +1436,7 @@ unicode_compose(PARROT_INTERP, ARGIN(const STRING *src))
 #define ENCODING_UPCASE     1
 #define ENCODING_DOWNCASE   2
 #define ENCODING_TITLECASE  3
+#define ENCODING_FOLDCASE   4
 
 /*
 
@@ -1366,6 +1459,7 @@ convert_case_buf(PARROT_INTERP, ARGMOD_NULLOK(char *dest_buf), size_t dest_len,
 #if PARROT_HAS_ICU
     UErrorCode err = U_ZERO_ERROR;
     int        res;
+    UNUSED(interp);
 
     switch (mode) {
       case ENCODING_UPCASE:
@@ -1381,6 +1475,11 @@ convert_case_buf(PARROT_INTERP, ARGMOD_NULLOK(char *dest_buf), size_t dest_len,
                            (const UChar *)src_buf, src_len / 2,
                            NULL, NULL, &err);
         break;
+      case ENCODING_FOLDCASE:
+        res = u_strFoldCase((UChar *)dest_buf, dest_len / 2,
+                            (const UChar *)src_buf, src_len / 2,
+                            U_FOLD_CASE_DEFAULT, &err);
+        break;
       default:
         res = 0; /* Should never happen, just to avoid a warning */
         break;
@@ -1391,13 +1490,40 @@ convert_case_buf(PARROT_INTERP, ARGMOD_NULLOK(char *dest_buf), size_t dest_len,
 
     return res * 2;
 #else
-    UNUSED(dest_buf);
+    if (mode == ENCODING_TITLECASE)
+        Parrot_ex_throw_from_c_noargs(interp,
+            EXCEPTION_LIBRARY_ERROR, "no ICU lib loaded");
+    else if (dest_buf) {
+        const Parrot_UInt2 *s = (const Parrot_UInt2 *)src_buf;
+        Parrot_UInt2       *d = (Parrot_UInt2 *)dest_buf;
+        UINTVAL len = src_len / 2;
+        UINTVAL i;
+
+        for (i = 0; i < len; ++i) {
+            unsigned int c = s[i];
+            if (c > 255) {
+                Parrot_ex_throw_from_c_noargs(interp,
+                     EXCEPTION_LIBRARY_ERROR, "no ICU lib loaded");
+            }
+            switch (mode) {
+              case ENCODING_UPCASE:
+                d[i] = (c >= 0xe0 && c != 0xf7)
+                         ? c & ~0x20
+                         : (Parrot_UInt2)toupper((unsigned char)c);
+                break;
+              case ENCODING_DOWNCASE:
+                d[i] = (c >= 0xc0 && c != 0xd7 && c <= 0xde)
+                         ? c | 0x20
+                         : (Parrot_UInt2)tolower((unsigned char)c);
+                break;
+              default:
+                d[i] = s[i];
+            }
+        }
+    }
+
     UNUSED(dest_len);
-    UNUSED(src_buf);
-    UNUSED(src_len);
-    UNUSED(mode);
-    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_LIBRARY_ERROR,
-        "no ICU lib loaded");
+    return src_len;
 #endif
 }
 
@@ -1433,7 +1559,7 @@ unicode_convert_case(PARROT_INTERP, ARGIN(const STRING *src), int mode)
 
     dest->bufused = convert_case_buf(interp, dest->strstart, dest_len,
                                      src->strstart, src->bufused, mode);
-    dest->strlen  = STRING_scan(interp, dest);
+    STRING_scan(interp, dest);
 
     /* downgrade if possible */
     if (dest->bufused == dest->strlen * 2)
@@ -1517,6 +1643,25 @@ unicode_titlecase(PARROT_INTERP, ARGIN(const STRING *src))
     return unicode_convert_case(interp, src, ENCODING_TITLECASE);
 }
 
+/*
+
+=item C<STRING * unicode_foldcase(PARROT_INTERP, const STRING *src)>
+
+Perform a Fold-Case on the string
+
+=cut
+
+*/
+
+PARROT_CANNOT_RETURN_NULL
+STRING *
+unicode_foldcase(PARROT_INTERP, ARGIN(const STRING *src))
+{
+    ASSERT_ARGS(unicode_foldcase)
+    /* This forces an up-convertion to utf16, which might not be desirable
+       in all cases */
+    return unicode_convert_case(interp, src, ENCODING_FOLDCASE);
+}
 
 /*
 
@@ -1529,13 +1674,13 @@ grapheme supports it. Not implemented.
 
 */
 
-PARROT_CANNOT_RETURN_NULL
+PARROT_DOES_NOT_RETURN
 STRING*
 unicode_upcase_first(PARROT_INTERP, SHIM(const STRING *src))
 {
     ASSERT_ARGS(unicode_upcase_first)
     /* TODO: https://trac.parrot.org/parrot/wiki/StringsTasklist Implement this. */
-    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNIMPLEMENTED,
+    Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_UNIMPLEMENTED,
         "Unicode upcase_first not implemented");
 }
 
@@ -1551,13 +1696,13 @@ the grapheme supports it. Not implemented
 
 */
 
-PARROT_CANNOT_RETURN_NULL
+PARROT_DOES_NOT_RETURN
 STRING*
 unicode_downcase_first(PARROT_INTERP, SHIM(const STRING *src))
 {
     ASSERT_ARGS(unicode_downcase_first)
     /* TODO: https://trac.parrot.org/parrot/wiki/StringsTasklist Implement this. */
-    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNIMPLEMENTED,
+    Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_UNIMPLEMENTED,
         "Unicode downcase_first not implemented");
 }
 
@@ -1573,15 +1718,21 @@ string supports it. Not implemented.
 
 */
 
-PARROT_CANNOT_RETURN_NULL
+PARROT_DOES_NOT_RETURN
 STRING*
 unicode_titlecase_first(PARROT_INTERP, SHIM(const STRING *src))
 {
     ASSERT_ARGS(unicode_titlecase_first)
     /* TODO: https://trac.parrot.org/parrot/wiki/StringsTasklist Implement this. */
-    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNIMPLEMENTED,
+    Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_UNIMPLEMENTED,
         "Unicode titlecase_first not implemented");
 }
+
+/*
+
+=back
+
+*/
 
 
 /*

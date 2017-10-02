@@ -5,7 +5,7 @@ use strict;
 use warnings;
 use lib qw( . lib ../lib ../../lib );
 use Test::More;
-use Parrot::Test tests => 12;
+use Parrot::Test tests => 14;
 
 =head1 NAME
 
@@ -52,7 +52,7 @@ pir_output_is( <<'CODE', <<'OUT', 'source' );
     say 'ok 1 - source() returns PMCNULL upon Exporter init'
 
     # get a NameSpace PMC for testing
-    # TT #1233 replace with make_namespace, when implemented
+    # GH #591 replace with make_namespace, when implemented
     .local pmc ns
     ns = get_namespace ['Eponymous']
 
@@ -83,7 +83,7 @@ pir_output_is( <<'CODE', <<'OUT', 'source' );
 .end
 
 
-# TT #1233 replace with make_namespace, when implemented
+# GH #591 replace with make_namespace, when implemented
 .namespace ['Eponymous']
 .sub 'Eponymous' :anon
 .end
@@ -110,7 +110,7 @@ pir_output_is( <<'CODE', <<'OUT', 'destination' );
     say 'ok 2 - ...which is current namespace at first'
 
     # get a NameSpace PMC for testing
-    # TT #1233 replace with make_namespace, when implemented
+    # GH #591 replace with make_namespace, when implemented
     .local pmc ns
     ns = get_namespace ['Eponymous']
 
@@ -141,7 +141,7 @@ pir_output_is( <<'CODE', <<'OUT', 'destination' );
 .end
 
 
-# TT #1233 replace with make_namespace, when implemented
+# GH #591 replace with make_namespace, when implemented
 .namespace ['Eponymous']
 .sub 'Eponymous' :anon
 .end
@@ -151,6 +151,27 @@ ok 2 - ...which is current namespace at first
 ok 3 - destination() with args sets destination namespace
 ok 4 - destination() with too many args fails
 ok 5 - destination() with non-namespace arg throws exception
+OUT
+
+pir_output_is( <<'CODE', <<'OUT', 'globals - invalid' );
+.include 'except_types.pasm'
+.sub 'test' :main
+    $P0 = new ['Exporter']
+    $P1 = new ['Undef']
+    push_eh catch
+    $P2 = $P0.'globals'($P1)
+    say 'not thrown'
+    goto end
+  catch:
+    .get_results($P3)
+    $I0 = $P3['type']
+    $I1 = iseq $I0, .EXCEPTION_INVALID_OPERATION
+    print 'Exception type is as expected: '
+    say $I1
+  end:
+.end
+CODE
+Exception type is as expected: 1
 OUT
 
 pir_output_is( <<'CODE', <<'OUT', 'globals' );
@@ -236,6 +257,14 @@ pir_output_is( <<'CODE', <<'OUT', 'globals' );
   ok_6:
     say 'ok 6 - globals() with too many args fails'
 
+    null $P99
+    $P0.'globals'($P99)
+    $P1 = $P0.'globals'()
+    $I0 = isnull $P1
+    mul $I0, 7
+    print 'ok '
+    print $I0
+    say ' - globals() with null arg sets null'
 .end
 CODE
 ok 1 - globals() returns PMCNULL upon Exporter init
@@ -244,6 +273,7 @@ ok 3 - globals() with array arg sets globals hash (hash with two keys)
 ok 4 - globals() with empty hash arg sets PMCNULL
 ok 5 - globals() with hash arg sets globals hash (hash with two keys)
 ok 6 - globals() with too many args fails
+ok 7 - globals() with null arg sets null
 OUT
 
 pir_error_output_like( <<'CODE', <<'OUT', 'import - no args' );
@@ -256,6 +286,30 @@ pir_error_output_like( <<'CODE', <<'OUT', 'import - no args' );
 .end
 CODE
 /^source namespace not set\n/
+OUT
+
+pir_output_is( <<'CODE', <<'OUT', 'import - null destination' );
+.include 'except_types.pasm'
+.sub 'test' :main
+    load_bytecode 'Test/More.pbc'
+    .local pmc exporter, src, dest, excep
+    exporter = new ['Exporter']
+    src = get_namespace [ 'Test'; 'More' ]
+    null dest
+    push_eh catch
+    exporter.'import'(src :named('source'), dest :named('destination'), 'plan ok' :named('globals') )
+    say 'not thrown'
+    goto end
+  catch:
+    .get_results(excep)
+    $I0 = excep['type']
+    $I1 = iseq $I0, .EXCEPTION_INVALID_OPERATION
+    print 'Exception type is as expected: '
+    say $I1
+  end:
+.end
+CODE
+Exception type is as expected: 1
 OUT
 
 pir_output_is( <<'CODE', <<'OUT', 'import - same source and destination namespaces' );
@@ -408,8 +462,8 @@ CODE
 ok 1
 OUT
 
-# Test exporting mmd subs: TT #1205
-# https://trac.parrot.org/parrot/ticket/1205
+# Test exporting mmd subs: GH #542
+# https://github.com/parrot/parrot/issues/542
 
 # Local Variables:
 #   mode: cperl

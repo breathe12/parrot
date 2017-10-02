@@ -31,7 +31,7 @@
 # parrot -R jit oo1-prop.pasm                     0.54
 
 .namespace [ "Foo" ]
-.sub 'main'
+.sub 'main' :main
     newclass $P1, "Foo"
     addattribute $P1, ".i"
     addattribute $P1, ".j"
@@ -52,13 +52,13 @@ loop:
 
 .sub 'init' :vtable
 .include "interpinfo.pasm"
-    interpinfo $P2, .INTERPINFO_CURRENT_OBJECT
+    .param pmc self
     new $P10, 'Integer'
     set $P10, 10
-    setattribute $P2, ".i", $P10
+    setattribute self, ".i", $P10
     $P10 = new 'Integer'
     $P10 = 20
-    setattribute $P2, ".j", $P10
+    setattribute self, ".j", $P10
     .return ()
 .end
 

@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2012, Parrot Foundation.
 package Parrot::Configure::Step::List;
 use strict;
 use warnings;
@@ -11,7 +11,6 @@ my @steps = qw(
     init::defaults
     init::install
     init::hints
-    init::headers
     inter::progs
     inter::make
     inter::lex
@@ -21,7 +20,6 @@ my @steps = qw(
     auto::backtrace
     auto::msvc
     auto::attributes
-    auto::warnings
     auto::arch
     auto::cpu
     init::optimize
@@ -36,8 +34,6 @@ my @steps = qw(
     auto::va_ptr
     auto::format
     auto::isreg
-    auto::jit
-    auto::frames
     auto::llvm
     auto::inline
     auto::gc
@@ -48,6 +44,7 @@ my @steps = qw(
     auto::neg_0
     auto::env
     auto::timespec
+    auto::infnan
     auto::thread
     auto::gmp
     auto::readline
@@ -56,20 +53,22 @@ my @steps = qw(
     auto::zlib
     auto::gettext
     auto::snprintf
+    auto::mathl
     auto::perldoc
+    auto::coverage
     auto::pod2man
     auto::ctags
-    auto::revision
-    auto::sha1
-    auto::git_describe
     auto::icu
     auto::libffi
     auto::ipv6
+    auto::platform
+    auto::alignof
+    auto::expect
+    auto::warnings
     gen::config_h
     gen::core_pmcs
     gen::opengl
     gen::makefiles
-    gen::platform
     gen::config_pm
 );
 

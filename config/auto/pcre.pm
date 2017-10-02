@@ -1,4 +1,4 @@
-# Copyright (C) 2008, Parrot Foundation.
+# Copyright (C) 2008-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -32,12 +32,11 @@ sub _init {
 sub runstep {
     my ( $self, $conf ) = @_;
 
-    my $without = $conf->options->get( qw| without-pcre | );
-
-    $self->set_result('no');
-    $conf->data->set( HAS_PCRE => 0 );
-
-    return 1 if ($without);
+    if ( $conf->options->get('without-pcre') ) {
+        $self->set_result('skipped');
+        $conf->data->set( HAS_PCRE => 0 );
+        return 1;
+    }
 
     my $osname = $conf->data->get('osname');
 
@@ -54,9 +53,11 @@ sub runstep {
     if ( !$@ ) {
         my $test = $conf->cc_run();
         if ( my $has_pcre = $self->_evaluate_cc_run($conf, $test) ) {
-        $conf->data->set( HAS_PCRE => $has_pcre);
+            $conf->data->set( HAS_PCRE => $has_pcre);
         }
     }
+
+    $conf->cc_clean();
 
     return 1;
 }

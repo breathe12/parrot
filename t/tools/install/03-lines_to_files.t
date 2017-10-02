@@ -16,7 +16,7 @@ use Parrot::Install qw(
     create_directories
     lines_to_files
 );
-use IO::CaptureOutput qw( capture );
+use Parrot::Configure::Utils qw( capture );
 
 my $cwd = cwd();
 my $testsourcedir = qq{$cwd/t/tools/install/testlib};
@@ -208,7 +208,7 @@ pass("Completed all tests in $0");
 
 =head1 DESCRIPTION
 
-The files in this directory test functionality used by the the scripts
+The files in this directory test functionality used by the scripts
 F<tools/dev/install_files.pl>, F<tools/dev/install_doc_files.pl> and F<tools/dev/install_dev_files.pl>
 and are exported by F<lib/Parrot/Install.pm>.
 

@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2001-2010, Parrot Foundation.
+Copyright (C) 2001-2015, Parrot Foundation.
 
 =head1 NAME
 
@@ -32,7 +32,6 @@ for "little endian".
 */
 
 #include "parrot/parrot.h"
-#include "byteorder.h"
 #include "pf_items.str"
 
 /* HEADERIZER HFILE: include/parrot/packfile.h */
@@ -138,6 +137,101 @@ static void cvt_num8_num16_le(
         __attribute__nonnull__(2)
         FUNC_MODIFIES(*dest);
 
+PARROT_INLINE
+static void fetch_buf_be_12(
+    ARGOUT(unsigned char *rb),
+    ARGIN(const unsigned char *b))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*rb);
+
+PARROT_INLINE
+static void fetch_buf_be_16(
+    ARGOUT(unsigned char *rb),
+    ARGIN(const unsigned char *b))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*rb);
+
+PARROT_INLINE
+static void fetch_buf_be_32(
+    ARGOUT(unsigned char *rb),
+    ARGIN(const unsigned char *b))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*rb);
+
+PARROT_INLINE
+static void fetch_buf_be_4(
+    ARGOUT(unsigned char *rb),
+    ARGIN(const unsigned char *b))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*rb);
+
+PARROT_INLINE
+static void fetch_buf_be_8(
+    ARGOUT(unsigned char *rb),
+    ARGIN(const unsigned char *b))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*rb);
+
+PARROT_INLINE
+static void fetch_buf_le_12(
+    ARGOUT(unsigned char *rb),
+    ARGIN(const unsigned char *b))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*rb);
+
+PARROT_INLINE
+static void fetch_buf_le_16(
+    ARGOUT(unsigned char *rb),
+    ARGIN(const unsigned char *b))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*rb);
+
+PARROT_INLINE
+static void fetch_buf_le_32(
+    ARGOUT(unsigned char *rb),
+    ARGIN(const unsigned char *b))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*rb);
+
+PARROT_INLINE
+static void fetch_buf_le_4(
+    ARGOUT(unsigned char *rb),
+    ARGIN(const unsigned char *b))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*rb);
+
+PARROT_INLINE
+static void fetch_buf_le_8(
+    ARGOUT(unsigned char *rb),
+    ARGIN(const unsigned char *b))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*rb);
+
+PARROT_INLINE
+PARROT_WARN_UNUSED_RESULT
+PARROT_CONST_FUNCTION
+static INTVAL fetch_iv_be(INTVAL w);
+
+PARROT_INLINE
+PARROT_WARN_UNUSED_RESULT
+PARROT_CONST_FUNCTION
+static INTVAL fetch_iv_le(INTVAL w);
+
+PARROT_INLINE
+PARROT_WARN_UNUSED_RESULT
+PARROT_CONST_FUNCTION
+static opcode_t fetch_op_be(opcode_t w);
+
 PARROT_WARN_UNUSED_RESULT
 static opcode_t fetch_op_be_4(ARGIN(const unsigned char *b))
         __attribute__nonnull__(1);
@@ -145,6 +239,11 @@ static opcode_t fetch_op_be_4(ARGIN(const unsigned char *b))
 PARROT_WARN_UNUSED_RESULT
 static opcode_t fetch_op_be_8(ARGIN(const unsigned char *b))
         __attribute__nonnull__(1);
+
+PARROT_INLINE
+PARROT_WARN_UNUSED_RESULT
+PARROT_CONST_FUNCTION
+static opcode_t fetch_op_le(opcode_t w);
 
 PARROT_WARN_UNUSED_RESULT
 static opcode_t fetch_op_le_4(ARGIN(const unsigned char *b))
@@ -196,10 +295,44 @@ static opcode_t fetch_op_le_8(ARGIN(const unsigned char *b))
 #define ASSERT_ARGS_cvt_num8_num16_le __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(dest) \
     , PARROT_ASSERT_ARG(src))
+#define ASSERT_ARGS_fetch_buf_be_12 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(rb) \
+    , PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_buf_be_16 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(rb) \
+    , PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_buf_be_32 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(rb) \
+    , PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_buf_be_4 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(rb) \
+    , PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_buf_be_8 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(rb) \
+    , PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_buf_le_12 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(rb) \
+    , PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_buf_le_16 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(rb) \
+    , PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_buf_le_32 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(rb) \
+    , PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_buf_le_4 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(rb) \
+    , PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_buf_le_8 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(rb) \
+    , PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_iv_be __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
+#define ASSERT_ARGS_fetch_iv_le __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
+#define ASSERT_ARGS_fetch_op_be __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
 #define ASSERT_ARGS_fetch_op_be_4 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(b))
 #define ASSERT_ARGS_fetch_op_be_8 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(b))
+#define ASSERT_ARGS_fetch_op_le __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
 #define ASSERT_ARGS_fetch_op_le_4 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(b))
 #define ASSERT_ARGS_fetch_op_le_8 __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
@@ -244,14 +377,15 @@ Tested ok.
 
 */
 
+#if (NUMVAL_SIZE == 8)
 static void
 cvt_num12_num8(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 {
     ASSERT_ARGS(cvt_num12_num8)
     int expo, i, s;
-#ifdef __LCC__
+#  ifdef __LCC__
     int expo2;
-#endif
+#  endif
 
     /*
        12-byte double (96 bits):
@@ -289,14 +423,14 @@ nul:
             dest[7] |= 0x80;
         return;
     }
-#ifdef __LCC__
+#  ifdef __LCC__
     /* Yet again, LCC blows up mysteriously until a temporary variable is
      * added. */
     expo2 = expo - 16383;
     expo  = expo2;
-#else
+#  else
     expo -= 16383;       /* - bias */
-#endif
+#  endif
     expo += 1023;       /* + bias 8byte */
     if (expo <= 0)       /* underflow */
         goto nul;
@@ -318,22 +452,23 @@ nul:
     }
     dest[0] |= src[1] >> 3;
 }
+#endif
 
 /*
 
 =item C<static void cvt_num16_num12(unsigned char *dest, const unsigned char
 *src)>
 
-Converts IEEE 754 LE 16-byte long double to i386 LE 12-byte long double .
+Converts IEEE 754 LE 16-byte long double to i386 LE 12-byte long double.
 See http://babbage.cs.qc.cuny.edu/IEEE-754/References.xhtml
 
-Untested.
+Tested ok.
 
 =cut
 
 */
 
-#if (NUMVAL_SIZE == 12) && !PARROT_BIGENDIAN
+#if (NUMVAL_SIZE == 12)
 static void
 cvt_num16_num12(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 {
@@ -369,13 +504,10 @@ cvt_num16_num12(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 
     memset(dest, 0, 12);
     /* simply copy over sign + exp */
-    TRACE_PRINTF_2(("  cvt_num16_num12: sign+exp=0x%2x\n", src[15]));
-    dest[11] = src[15];
-    dest[12] = src[14];
-    /* and trunc the rest */
-    memcpy(&dest[10], &src[13], 10);
-    TRACE_PRINTF_2(("  cvt_num16_num12: mantissa=0x%10x, double=%lf\n",
-                    src[13], (long double)*dest));
+    dest[10] = src[15];
+    dest[11] = src[14];
+    /* and copy the rest */
+    memcpy(&dest[0], &src[0], 10);
 }
 #endif
 
@@ -427,19 +559,16 @@ cvt_num12_num16(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
     +-------+-------+-------+-------+-------+-------+--...--+-------+
     1|<-----15----->|<----------------112 bits--------------------->|
     <---------------------------128 bits---------------------------->
-            16-byte LONG DOUBLE FLOATING-POINT (IA64 or BE 64-bit)
+            16-byte LONG DOUBLE FLOATING-POINT (x86_64 or BE 64-bit)
 
     */
 
     memset(dest, 0, 16);
     /* simply copy over sign + exp */
-    TRACE_PRINTF_2(("  cvt_num12_num16: sign+exp=0x%2x\n", src[11]));
     dest[15] = src[11];
-    dest[14] = src[12];
-    /* and trunc the rest */
-    memcpy(&dest[13], &src[9], 10);
-    TRACE_PRINTF_2(("  cvt_num12_num15: mantissa=0x%10x, double=%lf\n",
-                    src[19], (long double)*dest));
+    dest[14] = src[10];
+    /* and copy the rest */
+    memcpy(&dest[0], &src[0], 10);
 }
 #endif
 /*
@@ -455,6 +584,7 @@ First variant ok, 2nd not ok.
 
 */
 
+#if (NUMVAL_SIZE == 8)
 static void
 cvt_num16_num8(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 {
@@ -471,83 +601,15 @@ cvt_num16_num8(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 
     }
     else {
-        /* FIXME: This codepath fails */
-        int expo, i, s;
-#ifdef __LCC__
-        int expo2;
-#endif
-        exit_fatal(1, "cvt_num16_num8: long double conversion unsupported");
-
-    /* Have only 12-byte long double, or no long double at all. Need to disect it */
-
-    /*
-       16-byte double (128 bits):
-       sign  1  bit 127
-       exp  15 bits 126-112
-       man 112 bits 111-0
-    to 8-byte double (64 bits):
-       sign  1  bit 63
-       exp  11 bits 62-52
-       man  52 bits 51-0
-
-    +-------+-------+-------+-------+-------+-------+--...--+-------+
-    |src[15]|src[14]|src[13]|src[12]|src[11]|src[10]| ...   |src[0] |
-    S|     E        |                    F                          |
-    +-------+-------+-------+-------+-------+-------+--...--+-------+
-    1|<-----15----->|<----------------112 bits--------------------->|
-    <---------------------------128 bits---------------------------->
-            16-byte LONG DOUBLE FLOATING-POINT (IA64 or BE 64-bit)
-
-    +-------+-------+-------+-------+-------+-------+-------+-------+
-    |dest[7]|dest[6]|dest[5]|dest[4]|dest[3]|dest[2]|dest[1]|dest[0]|
-    S|    E    |                           F                        |
-    +-------+-------+-------+-------+-------+-------+-------+-------+
-    1|<---11-->|<---------------------52 bits---------------------->|
-    <----------------------------64 bits---------------------------->
-                       8-byte DOUBLE FLOATING-POINT
-
-   */
-
-        memset(dest, 0, 8);
-        s = src[15] & 0x80; /* 10000000 */
-        /* 15->11 exponents bits */
-        expo = ((src[15] & 0x7f)<< 8 | src[14]);
-        if (expo == 0) {
-          nul:
-            if (s)
-                dest[7] |= 0x80;
-            return;
-        }
-#ifdef __LCC__
-        /* LCC blows up mysteriously until a temporary variable is
-         * added. */
-        expo2 = expo - 16383;
-        expo  = expo2;
-#else
-        expo -= 16383;       /* - same bias as with 12-byte */
-#endif
-        expo += 1023;       /* + bias 8byte */
-        if (expo <= 0)       /* underflow */
-            goto nul;
-        if (expo > 0x7ff) {  /* inf/nan */
-            dest[7] = 0x7f;
-            dest[6] = src[7] == 0xc0 ? 0xf8 : 0xf0 ;
-            goto nul;
-        }
-        expo <<= 4;
-        dest[6] = (expo & 0xff);
-        dest[7] = (expo & 0x7f00) >> 8;
-        if (s)
-            dest[7] |= 0x80;
-        /* long double frac 112 bits => 52 bits
-           src[13] &= 0x7f; reset integer bit */
-        for (i = 0; i < 6; ++i) {
-            dest[i+1] |= (i==5 ? src[13]&0x7f : src[i+7]) >> 3;
-            dest[i] |= (src[i+7] & 0x1f) << 5;
-        }
-        dest[0] |= src[1] >> 3;
+#  if !PARROT_BIGENDIAN
+        /* assume intel 10-byte padded to 16 byte, not a true __float128 */
+        cvt_num12_num8(dest, src);
+        return;
+#  endif
+        Parrot_x_force_error_exit(NULL, 1, "cvt_num16_num8: long double conversion unsupported");
     }
 }
+#endif
 
 /*
 
@@ -556,7 +618,7 @@ cvt_num16_num8(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 
 Converts IEEE 754 8-byte double to IEEE 754 16 byte long double.
 
-Untested.
+Tested ok.
 
 =cut
 
@@ -572,7 +634,6 @@ cvt_num8_num16(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
     double d;
     memcpy(&d, src, 8);
     ld = (long double)d; /* TODO: test compiler cast */
-    /*TRACE_PRINTF_2(("  cvt_num8_num16: d=%f, ld=%lf\n", d, ld));*/
     memcpy(dest, &ld, 16);
 }
 #endif
@@ -599,7 +660,6 @@ cvt_num8_num12(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
     double d;
     memcpy(&d, src, 8);
     ld = (long double)d; /* compiler cast */
-    /*TRACE_PRINTF_2(("  cvt_num8_num12: ld=%lf, d=%f\n", ld, d));*/
     memcpy(dest, &ld, 12);
 }
 #endif
@@ -625,7 +685,6 @@ cvt_num8_num12_be(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
     ASSERT_ARGS(cvt_num8_num12_be)
     unsigned char b[8];
     fetch_buf_be_8(b, src);
-    /*TRACE_PRINTF_2(("  cvt_num8_num12_be: 0x%8x\n", b));*/
     cvt_num8_num12(dest, b);
 }
 #endif
@@ -637,7 +696,7 @@ cvt_num8_num12_be(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 
 Converts a little-endian IEEE 754 8-byte double to big-endian 16-byte long double.
 
-Untested.
+Yet untested.
 
 =cut
 
@@ -650,7 +709,6 @@ cvt_num8_num16_le(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
     ASSERT_ARGS(cvt_num8_num16_le)
     unsigned char b[8];
     fetch_buf_be_8(b, src);  /* TODO test endianize */
-    TRACE_PRINTF_2(("  cvt_num8_num16_le: 0x%8x\n", b));
     cvt_num8_num16(dest, b);
 }
 #endif
@@ -675,7 +733,6 @@ cvt_num12_num16_le(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
     ASSERT_ARGS(cvt_num12_num16_le)
     unsigned char b[12];
     fetch_buf_be_12(b, src);  /* TODO test endianize */
-    TRACE_PRINTF_2(("  cvt_num12_num16_le: 0x%8x\n", b));
     cvt_num12_num16(dest, b);
 }
 #endif
@@ -687,22 +744,18 @@ cvt_num12_num16_le(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 
 Converts a little-endian 12-byte i386 long double into a big-endian IEEE 754 8-byte double.
 
-Tested nok.
-
 =cut
 
 */
 
-#if PARROT_BIGENDIAN
+#if (NUMVAL_SIZE == 8) && PARROT_BIGENDIAN
 static void
 cvt_num12_num8_le(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 {
     ASSERT_ARGS(cvt_num12_num8_le)
     unsigned char b[12];
     fetch_buf_le_12(b, src);  /* TODO test endianize */
-    TRACE_PRINTF_2(("  cvt_num12_num8_le: 0x%12x\n", b));
     cvt_num12_num8(dest, b);
-    exit_fatal(1, "cvt_num12_num8_le: long double conversion unsupported");
 }
 #endif
 
@@ -711,25 +764,23 @@ cvt_num12_num8_le(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 =item C<static void cvt_num16_num8_le(unsigned char *dest, const unsigned char
 *src)>
 
-Converts a little-endian IEEE 754 intel 16-byte long double into a
-big-endian IEEE 754 8-byte double.
+Converts a little-endian intel 16-byte long double (i.e. 10-byte)
+into a big-endian IEEE 754 8-byte double.
 
-Tested nok. Produces all zeros.
+For a true little-endian __float128, see C<cvt_num16_num8_be()>.
 
 =cut
 
 */
 
-#if PARROT_BIGENDIAN
+#if (NUMVAL_SIZE == 8) && PARROT_BIGENDIAN
 static void
 cvt_num16_num8_le(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 {
     ASSERT_ARGS(cvt_num16_num8_le)
     unsigned char b[16];
     fetch_buf_le_16(b, src);
-    TRACE_PRINTF_2(("  cvt_num16_num8_le: 0x%16x\n", b));
     cvt_num16_num8(dest, b);
-    exit_fatal(1, "cvt_num16_num8_le: long double conversion unsupported");
 }
 #endif
 
@@ -738,7 +789,8 @@ cvt_num16_num8_le(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 =item C<static void cvt_num16_num8_be(unsigned char *dest, const unsigned char
 *src)>
 
-Converts a big-endian IEEE 754 16-byte long double into a IEEE 754 8-byte double.
+Converts a big-endian IEEE 754 16-byte __float128 (not a powerpc double-double)
+into a little-endian IEEE 754 8-byte double.
 
 Untested.
 
@@ -746,15 +798,85 @@ Untested.
 
 */
 
-#if !PARROT_BIGENDIAN
+#if (NUMVAL_SIZE == 8) && !PARROT_BIGENDIAN
 static void
 cvt_num16_num8_be(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
 {
     ASSERT_ARGS(cvt_num16_num8_be)
     unsigned char b[16];
+    int expo, i, s;
+#  ifdef __LCC__
+    int expo2;
+#  endif
+
     fetch_buf_be_16(b, src);
-    TRACE_PRINTF_2(("  cvt_num16_num8_be: 0x%16x\n", b));
-    cvt_num16_num8(dest, b);
+
+    /*
+       16-byte double (128 bits):
+       sign  1  bit 127
+       exp  15 bits 126-112
+       man 112 bits 111-0
+    to 8-byte double (64 bits):
+       sign  1  bit 63
+       exp  11 bits 62-52
+       man  52 bits 51-0
+
+    +-------+-------+-------+-------+-------+-------+--...--+-------+
+    |src[15]|src[14]|src[13]|src[12]|src[11]|src[10]| ...   |src[0] |
+    S|     E        |                    F                          |
+    +-------+-------+-------+-------+-------+-------+--...--+-------+
+    1|<-----15----->|<----------------112 bits--------------------->|
+    <---------------------------128 bits---------------------------->
+            16-byte __float128 (BE 64-bit)
+
+    +-------+-------+-------+-------+-------+-------+-------+-------+
+    |dest[7]|dest[6]|dest[5]|dest[4]|dest[3]|dest[2]|dest[1]|dest[0]|
+    S|    E    |                           F                        |
+    +-------+-------+-------+-------+-------+-------+-------+-------+
+    1|<---11-->|<---------------------52 bits---------------------->|
+    <----------------------------64 bits---------------------------->
+                       8-byte DOUBLE FLOATING-POINT
+
+   */
+
+    memset(dest, 0, 8);
+    s = b[15] & 0x80; /* 10000000 */
+    /* 15->11 exponents bits */
+    expo = ((b[15] & 0x7f)<< 8 | b[14]);
+    if (expo == 0) {
+      nul:
+        if (s)
+            dest[7] |= 0x80;
+        return;
+    }
+#  ifdef __LCC__
+    /* LCC blows up mysteriously until a temporary variable is
+     * added. */
+    expo2 = expo - 16383;
+    expo  = expo2;
+#  else
+    expo -= 16383;       /* - same bias as with 12-byte */
+#  endif
+    expo += 1023;       /* + bias 8byte */
+    if (expo <= 0)       /* underflow */
+        goto nul;
+    if (expo > 0x7ff) {  /* inf/nan */
+        dest[7] = 0x7f;
+        dest[6] = b[7] == 0xc0 ? 0xf8 : 0xf0 ;
+        goto nul;
+    }
+    expo <<= 4;
+    dest[6] = (expo & 0xff);
+    dest[7] = (expo & 0x7f00) >> 8;
+    if (s)
+        dest[7] |= 0x80;
+    /* long double frac 112 bits => 52 bits
+       b[13] &= 0x7f; reset integer bit */
+    for (i = 0; i < 6; ++i) {
+        dest[i+1] |= (i==5 ? b[13]&0x7f : b[i+7]) >> 3;
+        dest[i] |= (b[i+7] & 0x1f) << 5;
+    }
+    dest[0] |= b[1] >> 3;
 }
 #endif
 
@@ -778,7 +900,6 @@ cvt_num16_num12_be(ARGOUT(unsigned char *dest), ARGIN(const unsigned char *src))
     ASSERT_ARGS(cvt_num16_num12_be)
     unsigned char b[16];
     fetch_buf_be_16(b, src);
-    TRACE_PRINTF_2(("  cvt_num16_num12_be: 0x%16x\n", b));
     cvt_num16_num12(dest, b);
 }
 #endif
@@ -836,9 +957,9 @@ fetch_op_be_4(ARGIN(const unsigned char *b))
 #  endif
 #else
 #  if OPCODE_T_SIZE == 8
-    return (Parrot_Int4)(fetch_iv_le((INTVAL)u.o) & 0xffffffff);
+    return (Parrot_Int4)(fetch_iv_le(u.o) & 0xffffffff);
 #  else
-    return (opcode_t) fetch_iv_le((INTVAL)u.o);
+    return (opcode_t) fetch_iv_le(u.o);
 #  endif
 #endif
 }
@@ -953,8 +1074,6 @@ When used for freeze/thaw the C<pf> argument might be NULL.
 
 */
 
-PARROT_WARN_UNUSED_RESULT
-PARROT_CANNOT_RETURN_NULL
 opcode_t
 PF_fetch_opcode(ARGIN_NULLOK(const PackFile *pf), ARGMOD(const opcode_t **stream))
 {
@@ -966,6 +1085,7 @@ PF_fetch_opcode(ARGIN_NULLOK(const PackFile *pf), ARGMOD(const opcode_t **stream
         const unsigned char *ucstream = *(const unsigned char **)stream;
         opcode_t o  = (pf->fetch_op)(ucstream);
         ucstream   += pf->header->wordsize;
+        /* XXX -Wcast-align Need to check alignment for RISC, or memcpy */
         *stream     = (const opcode_t *)ucstream;
         return o;
     }
@@ -1003,6 +1123,7 @@ is 1 I<per definition>.
 */
 
 PARROT_CONST_FUNCTION
+PARROT_WARN_UNUSED_RESULT
 size_t
 PF_size_opcode(void)
 {
@@ -1017,7 +1138,7 @@ PF_size_opcode(void)
 Fetches an C<INTVAL> from the stream, converting byteorder if needed.
 
 XXX assumes C<sizeof (INTVAL) == sizeof (opcode_t)> - we don't have
-C<INTVAL> size in the PackFile header.
+C<INTVAL> size in the PackFile header.  See TT #1047 or RT #56810.
 
 =cut
 
@@ -1033,12 +1154,11 @@ PF_fetch_integer(ARGIN(PackFile *pf), ARGIN(const opcode_t **stream))
     if (!pf->fetch_iv)
         return *(*stream)++;
     i = (pf->fetch_iv)(*((const unsigned char **)stream));
-    TRACE_PRINTF_VAL(("  PF_fetch_integer: 0x%x (%d) at 0x%x\n", i, i,
-                      OFFS(pf, *stream)));
+
     /* XXX assume sizeof (opcode_t) == sizeof (INTVAL) on the
      * machine producing this PBC.
      *
-     * TODO TT #364 on Sparc 64bit: On pbc wordsize=4 but native ptrsize=8 and
+     * TODO GH #415 on Sparc 64bit: On pbc wordsize=4 but native ptrsize=8 and
      * ptr_alignment=8 the advance by 4 will signal BUS (invalid address alignment)
      * in PF_fetch_integer and elsewhere.
      */
@@ -1106,25 +1226,19 @@ PF_fetch_number(ARGIN_NULLOK(PackFile *pf), ARGIN(const opcode_t **stream))
     FLOATVAL f;
     double d;
     if (!pf || !pf->fetch_nv) {
-        TRACE_PRINTF(("PF_fetch_number: Native [%d bytes]\n",
-                      sizeof (FLOATVAL)));
         memcpy(&f, (const char *)*stream, sizeof (FLOATVAL));
-        TRACE_PRINTF_VAL(("PF_fetch_number: %f at 0x%x\n", f, OFFS(pf, *stream)));
         (*stream) += (sizeof (FLOATVAL) + sizeof (opcode_t) - 1)/
             sizeof (opcode_t);
         return f;
     }
     f = (FLOATVAL) 0;
-    TRACE_PRINTF(("PF_fetch_number at 0x%x: Converting...\n", OFFS(pf, *stream)));
     /* 12->8 has a messy cast. */
     if (NUMVAL_SIZE == 8 && pf->header->floattype == FLOATTYPE_12) {
         (pf->fetch_nv)((unsigned char *)&d, (const unsigned char *) *stream);
         f = d;
-        TRACE_PRINTF_VAL(("PF_fetch_number: cast %f\n", f));
     }
     else {
         (pf->fetch_nv)((unsigned char *)&f, (const unsigned char *) *stream);
-        TRACE_PRINTF_VAL(("PF_fetch_number: %f\n", f));
     }
     if (pf->header->floattype == FLOATTYPE_8) {
         *((const unsigned char **) (stream)) += 8;
@@ -1165,7 +1279,7 @@ PF_store_number(ARGOUT(opcode_t *cursor), ARGIN(const FLOATVAL *val))
     ASSERT_ARGS(PF_store_number)
     opcode_t padded_size  = (sizeof (FLOATVAL) + sizeof (opcode_t) - 1) /
         sizeof (opcode_t);
-    mem_sys_memcopy(cursor, val, sizeof (FLOATVAL));
+    memcpy(cursor, val, sizeof (FLOATVAL));
     cursor += padded_size;
     return cursor;
 }
@@ -1252,7 +1366,7 @@ PF_store_buf(ARGOUT(opcode_t *cursor), ARGIN(const STRING *s))
 
     if (s->strstart) {
         char *charcursor = (char *) cursor;
-        mem_sys_memcopy(charcursor, s->strstart, s->bufused);
+        memcpy(charcursor, s->strstart, s->bufused);
         charcursor += s->bufused;
 
         /* Pad up to wordsize boundary. */
@@ -1331,10 +1445,6 @@ PF_fetch_string(PARROT_INTERP, ARGIN_NULLOK(PackFile *pf), ARGIN(const opcode_t 
 
     size = (size_t)PF_fetch_opcode(pf, cursor);
 
-    TRACE_PRINTF(("PF_fetch_string(): flags=0x%04x, ", flags));
-    TRACE_PRINTF(("encoding_nr=%ld, ", encoding_nr));
-    TRACE_PRINTF(("size=%ld.\n", size));
-
     encoding = Parrot_get_encoding(interp, encoding_nr);
     if (!encoding)
             Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNIMPLEMENTED,
@@ -1346,19 +1456,9 @@ PF_fetch_string(PARROT_INTERP, ARGIN_NULLOK(PackFile *pf), ARGIN(const opcode_t 
     else
         s = CONST_STRING(interp, "");
 
-    /* print only printable characters */
-    TRACE_PRINTF_VAL(("PF_fetch_string(): string is '%s' at 0x%x\n",
-                      s->strstart, OFFS(pf, *cursor)));
-
-    TRACE_PRINTF_ALIGN(("-s ROUND_UP_B: cursor=0x%x, size=%d, wordsize=%d\n",
-                        (const char *)*cursor + size, size, wordsize));
-
     size = ROUND_UP_B(size, wordsize);
-
-    TRACE_PRINTF(("PF_fetch_string(): round size up to %ld.\n", size));
     *((const unsigned char **) (cursor)) += size;
 
-    TRACE_PRINTF_ALIGN(("+s ROUND_UP_B: cursor=0x%x, size=%d\n", *cursor, size));
     return s;
 }
 
@@ -1381,10 +1481,6 @@ PF_store_string(ARGOUT(opcode_t *cursor), ARGIN(const STRING *s))
     ASSERT_ARGS(PF_store_string)
     opcode_t padded_size = s->bufused;
     char *charcursor;
-
-#if TRACE_PACKFILE == 3
-    Parrot_io_eprintf(NULL, "PF_store_string(): size is %ld...\n", s->bufused);
-#endif
 
     if (padded_size % sizeof (opcode_t)) {
         padded_size += sizeof (opcode_t) - (padded_size % sizeof (opcode_t));
@@ -1416,7 +1512,7 @@ PF_store_string(ARGOUT(opcode_t *cursor), ARGIN(const STRING *s))
     charcursor = (char *)cursor;
 
     if (s->strstart) {
-        mem_sys_memcopy(charcursor, s->strstart, s->bufused);
+        memcpy(charcursor, s->strstart, s->bufused);
         charcursor += s->bufused;
         /* Pad up to sizeof (opcode_t) boundary. */
         while ((unsigned long) (charcursor - (char *) cursor) % sizeof (opcode_t)) {
@@ -1499,16 +1595,8 @@ PF_fetch_cstring(PARROT_INTERP, ARGIN(PackFile *pf), ARGIN(const opcode_t **curs
     char * const p = mem_gc_allocate_n_typed(interp, str_len, char);
     const int wordsize = pf->header->wordsize;
 
-    TRACE_PRINTF(("PF_fetch_cstring(): size is %ld...\n", str_len));
     strcpy(p, (const char*) (*cursor));
-    TRACE_PRINTF_VAL(("PF_fetch_cstring(): string is '%s' at 0x%x\n",
-                      p, OFFS(pf, *cursor)));
-    TRACE_PRINTF_ALIGN(("-s ROUND_UP_B: cursor=0x%x, size=%d, wordsize=%d (cstring)\n",
-                        *cursor, str_len, wordsize));
     *((const unsigned char **) (cursor)) += ROUND_UP_B(str_len, wordsize);
-    TRACE_PRINTF_ALIGN(("+s ROUND_UP_B: cursor=0x%x, offset=0x%x\n",
-                        *cursor, OFFS(pf, *cursor)));
-
     return p;
 }
 
@@ -1613,7 +1701,7 @@ PackFile_assign_transforms(ARGMOD(PackFile *pf))
             break;
 #  endif
           default:
-            exit_fatal(1,
+            Parrot_x_force_error_exit(NULL, 1,
               "PackFile_unpack: unsupported float conversion %d to %d, "
               "PARROT_BIGENDIAN=%d\n",
               NUMVAL_SIZE, pf->header->floattype, PARROT_BIGENDIAN);
@@ -1650,7 +1738,7 @@ PackFile_assign_transforms(ARGMOD(PackFile *pf))
             break;
 #  endif
           default:
-            exit_fatal(1,
+            Parrot_x_force_error_exit(NULL, 1,
               "PackFile_unpack: unsupported float conversion %d to %d, "
               "PARROT_BIGENDIAN=%d\n",
               NUMVAL_SIZE, pf->header->floattype, PARROT_BIGENDIAN);
@@ -1675,7 +1763,7 @@ PackFile_assign_transforms(ARGMOD(PackFile *pf))
             pf->fetch_nv = fetch_buf_be_8;
             break;
           case FLOATTYPE_12:
-            exit_fatal(1, "PackFile_unpack: invalid floattype 1 big-endian");
+            Parrot_x_force_error_exit(NULL, 1, "PackFile_unpack: invalid floattype 1 big-endian");
             break;
           case FLOATTYPE_16:
             pf->fetch_nv = cvt_num16_num8_be;
@@ -1686,7 +1774,7 @@ PackFile_assign_transforms(ARGMOD(PackFile *pf))
             pf->fetch_nv = cvt_num8_num12_be;
             break;
           case FLOATTYPE_12:
-            exit_fatal(1, "PackFile_unpack: invalid floattype 1 big-endian");
+            Parrot_x_force_error_exit(NULL, 1, "PackFile_unpack: invalid floattype 1 big-endian");
             break;
           case FLOATTYPE_16:
             pf->fetch_nv = cvt_num16_num12_be;
@@ -1697,14 +1785,14 @@ PackFile_assign_transforms(ARGMOD(PackFile *pf))
             pf->fetch_nv = cvt_num8_num16_be;
             break;
           case FLOATTYPE_12:
-            exit_fatal(1, "PackFile_unpack: invalid floattype 1 big-endian");
+            Parrot_x_force_error_exit(NULL, 1, "PackFile_unpack: invalid floattype 1 big-endian");
             break;
           case FLOATTYPE_16:
             pf->fetch_nv = fetch_buf_be_16;
             break;
 #  endif
           default:
-            exit_fatal(1,
+            Parrot_x_force_error_exit(NULL, 1,
               "PackFile_unpack: unsupported float conversion %d to %d, "
               "PARROT_BIGENDIAN=%d\n",
               NUMVAL_SIZE, pf->header->floattype, PARROT_BIGENDIAN);
@@ -1751,7 +1839,7 @@ PackFile_assign_transforms(ARGMOD(PackFile *pf))
             break;
 #  endif
           default:
-            exit_fatal(1,
+            Parrot_x_force_error_exit(NULL, 1,
               "PackFile_unpack: unsupported float conversion %d to %d, "
               "PARROT_BIGENDIAN=%d\n",
               NUMVAL_SIZE, pf->header->floattype, PARROT_BIGENDIAN);
@@ -1762,19 +1850,542 @@ PackFile_assign_transforms(ARGMOD(PackFile *pf))
 #endif
 }
 
+
+/*
+
+=item C<static INTVAL fetch_iv_le(INTVAL w)>
+
+This function converts a 4 or 8 byte C<INTVAL> into little endian
+format. If the native format is already little endian, then no
+conversion is done.
+
+=cut
+
+*/
+
+PARROT_INLINE
+PARROT_WARN_UNUSED_RESULT
+PARROT_CONST_FUNCTION
+static INTVAL
+fetch_iv_le(INTVAL w)
+{
+    ASSERT_ARGS(fetch_iv_le)
+#if !PARROT_BIGENDIAN
+    return w;
+#else
+#  if INTVAL_SIZE == 4
+    return (w << 24) | ((w & 0xff00) << 8) | ((w & 0xff0000) >> 8) | (w >> 24);
+#  else
+#    if INTVAL_SIZE == 8
+    INTVAL r;
+
+    r = w << 56;
+    r |= (w & 0xff00) << 40;
+    r |= (w & 0xff0000) << 24;
+    r |= (w & 0xff000000) << 8;
+    r |= (w & 0xff00000000) >> 8;
+    r |= (w & 0xff0000000000) >> 24;
+    r |= (w & 0xff000000000000) >> 40;
+    r |= (w & 0xff00000000000000) >> 56;
+    return r;
+#    else
+    Parrot_x_force_error_exit(NULL, 1, "Unsupported INTVAL_SIZE=%d\n",
+               INTVAL_SIZE);
+#    endif
+#  endif
+#endif
+}
+
+/*
+
+=item C<static INTVAL fetch_iv_be(INTVAL w)>
+
+This function converts a 4 or 8 byte C<INTVAL> into big endian format.
+If the native format is already big endian, then no conversion is done.
+
+=cut
+
+*/
+
+PARROT_INLINE
+PARROT_WARN_UNUSED_RESULT
+PARROT_CONST_FUNCTION
+static INTVAL
+fetch_iv_be(INTVAL w)
+{
+    ASSERT_ARGS(fetch_iv_be)
+#if PARROT_BIGENDIAN
+    return w;
+#else
+#  if INTVAL_SIZE == 4
+    return (w << 24) | ((w & 0xff00) << 8) | ((w & 0xff0000) >> 8) | (w >> 24);
+#  else
+#    if INTVAL_SIZE == 8
+    INTVAL r;
+    r = w << 56;
+    r |= (w & 0xff00) << 40;
+    r |= (w & 0xff0000) << 24;
+    r |= (w & 0xff000000) << 8;
+    r |= (w & 0xff00000000) >> 8;
+    r |= (w & 0xff0000000000) >> 24;
+    r |= (w & 0xff000000000000) >> 40;
+    r |= (w & 0xff00000000000000) >> 56;
+    return r;
+#    else
+    Parrot_x_force_error_exit(NULL, 1, "Unsupported INTVAL_SIZE=%d\n", INTVAL_SIZE);
+#    endif
+#  endif
+#endif
+}
+
+/*
+
+=item C<static opcode_t fetch_op_be(opcode_t w)>
+
+Same as C<fetch_iv_be> for opcode_t
+
+=cut
+
+*/
+
+PARROT_INLINE
+PARROT_WARN_UNUSED_RESULT
+PARROT_CONST_FUNCTION
+static opcode_t
+fetch_op_be(opcode_t w)
+{
+    ASSERT_ARGS(fetch_op_be)
+#if PARROT_BIGENDIAN
+    return w;
+#else
+#  if OPCODE_T_SIZE == 4
+    return (w << 24) | ((w & 0x0000ff00) << 8) | ((w & 0x00ff0000) >> 8) |
+        ((w & 0xff000000) >> 24);
+#  else
+    opcode_t r;
+
+    r = w << 56;
+    r |= (w & 0xff00) << 40;
+    r |= (w & 0xff0000) << 24;
+    r |= (w & 0xff000000) << 8;
+    r |= (w & 0xff00000000) >> 8;
+    r |= (w & 0xff0000000000) >> 24;
+    r |= (w & 0xff000000000000) >> 40;
+    r |= (w & 0xff00000000000000) >> 56;
+    return r;
+#  endif
+#endif
+}
+
+/*
+
+=item C<static opcode_t fetch_op_le(opcode_t w)>
+
+Same as C<fetch_iv_le> for opcode_t
+
+=cut
+
+*/
+
+PARROT_INLINE
+PARROT_WARN_UNUSED_RESULT
+PARROT_CONST_FUNCTION
+static opcode_t
+fetch_op_le(opcode_t w)
+{
+    ASSERT_ARGS(fetch_op_le)
+#if !PARROT_BIGENDIAN
+    return w;
+#else
+#  if OPCODE_T_SIZE == 4
+    return (w << 24) | ((w & 0x0000ff00) << 8) | ((w & 0x00ff0000) >> 8) |
+        ((w & 0xff000000) >> 24);
+#  else
+    opcode_t r;
+
+    r = w << 56;
+    r |= (w & 0xff00) << 40;
+    r |= (w & 0xff0000) << 24;
+    r |= (w & 0xff000000) << 8;
+    r |= (w & 0xff00000000) >> 8;
+    r |= (w & 0xff0000000000) >> 24;
+    r |= (w & 0xff000000000000) >> 40;
+    r |= (w & 0xff00000000000000) >> 56;
+    return r;
+#  endif
+#endif
+}
+
+/*
+
+=pod
+
+Unrolled routines for swapping various sizes from 32-128 bits. These
+should only be used if alignment is unknown or we are pulling something
+out of a padded buffer.
+
+=cut
+
+*/
+
+/*
+
+=item C<static void fetch_buf_be_4(unsigned char *rb, const unsigned char *b)>
+
+Converts a 4-byte big-endian buffer C<b> into a little-endian C<rb>.
+
+=cut
+
+*/
+
+PARROT_INLINE
+static void
+fetch_buf_be_4(ARGOUT(unsigned char *rb), ARGIN(const unsigned char *b))
+{
+    ASSERT_ARGS(fetch_buf_be_4)
+#if PARROT_BIGENDIAN
+    memcpy(rb, b, 4);
+#else
+    rb[0] = b[3];
+    rb[1] = b[2];
+    rb[2] = b[1];
+    rb[3] = b[0];
+#endif
+}
+
+/*
+
+=item C<static void fetch_buf_le_4(unsigned char *rb, const unsigned char *b)>
+
+Converts a 4-byte little-endian buffer C<b> into a big-endian buffer C<rb>.
+
+=cut
+
+*/
+
+PARROT_INLINE
+static void
+fetch_buf_le_4(ARGOUT(unsigned char *rb), ARGIN(const unsigned char *b))
+{
+    ASSERT_ARGS(fetch_buf_le_4)
+#if !PARROT_BIGENDIAN
+    memcpy(rb, b, 4);
+#else
+    rb[0] = b[3];
+    rb[1] = b[2];
+    rb[2] = b[1];
+    rb[3] = b[0];
+#endif
+}
+
+/*
+
+=item C<static void fetch_buf_be_8(unsigned char *rb, const unsigned char *b)>
+
+Converts an 8-byte big-endian buffer C<b> into a little-endian buffer C<rb>
+
+=cut
+
+*/
+
+PARROT_INLINE
+static void
+fetch_buf_be_8(ARGOUT(unsigned char *rb), ARGIN(const unsigned char *b))
+{
+    ASSERT_ARGS(fetch_buf_be_8)
+#if PARROT_BIGENDIAN
+    memcpy(rb, b, 8);
+#else
+    rb[0] = b[7];
+    rb[1] = b[6];
+    rb[2] = b[5];
+    rb[3] = b[4];
+    rb[4] = b[3];
+    rb[5] = b[2];
+    rb[6] = b[1];
+    rb[7] = b[0];
+#endif
+}
+
+/*
+
+=item C<static void fetch_buf_le_8(unsigned char *rb, const unsigned char *b)>
+
+Converts an 8-byte little-endian buffer C<b> into a big-endian buffer C<rb>.
+
+=cut
+
+*/
+
+PARROT_INLINE
+static void
+fetch_buf_le_8(ARGOUT(unsigned char *rb), ARGIN(const unsigned char *b))
+{
+    ASSERT_ARGS(fetch_buf_le_8)
+#if !PARROT_BIGENDIAN
+    memcpy(rb, b, 8);
+#else
+    rb[0] = b[7];
+    rb[1] = b[6];
+    rb[2] = b[5];
+    rb[3] = b[4];
+    rb[4] = b[3];
+    rb[5] = b[2];
+    rb[6] = b[1];
+    rb[7] = b[0];
+#endif
+}
+
+/*
+
+=item C<static void fetch_buf_le_12(unsigned char *rb, const unsigned char *b)>
+
+Converts a 12-byte little-endian buffer C<b> into a big-endian buffer C<b>.
+
+=cut
+
+*/
+
+PARROT_INLINE
+static void
+fetch_buf_le_12(ARGOUT(unsigned char *rb), ARGIN(const unsigned char *b))
+{
+    ASSERT_ARGS(fetch_buf_le_12)
+#if !PARROT_BIGENDIAN
+    memcpy(rb, b, 12);
+#else
+    rb[0]  = b[11];
+    rb[1]  = b[10];
+    rb[2]  = b[9];
+    rb[3]  = b[8];
+    rb[4]  = b[7];
+    rb[5]  = b[6];
+    rb[6]  = b[5];
+    rb[7]  = b[4];
+    rb[8]  = b[3];
+    rb[9]  = b[2];
+    rb[10] = b[1];
+    rb[11] = b[0];
+#endif
+}
+
+/*
+
+=item C<static void fetch_buf_be_12(unsigned char *rb, const unsigned char *b)>
+
+Converts a 12-byte big-endian buffer C<b> into a little-endian buffer C<b>.
+
+=cut
+
+*/
+
+PARROT_INLINE
+static void
+fetch_buf_be_12(ARGOUT(unsigned char *rb), ARGIN(const unsigned char *b))
+{
+    ASSERT_ARGS(fetch_buf_be_12)
+#if PARROT_BIGENDIAN
+    memcpy(rb, b, 12);
+#else
+    rb[0]  = b[11];
+    rb[1]  = b[10];
+    rb[2]  = b[9];
+    rb[3]  = b[8];
+    rb[4]  = b[7];
+    rb[5]  = b[6];
+    rb[6]  = b[5];
+    rb[7]  = b[4];
+    rb[8]  = b[3];
+    rb[9]  = b[2];
+    rb[10] = b[1];
+    rb[11] = b[0];
+#endif
+}
+
+/*
+
+=item C<static void fetch_buf_le_16(unsigned char *rb, const unsigned char *b)>
+
+Converts a 16-byte little-endian buffer C<b> into a big-endian buffer C<b>.
+
+=cut
+
+*/
+
+PARROT_INLINE
+static void
+fetch_buf_le_16(ARGOUT(unsigned char *rb), ARGIN(const unsigned char *b))
+{
+    ASSERT_ARGS(fetch_buf_le_16)
+#if !PARROT_BIGENDIAN
+    memcpy(rb, b, 16);
+#else
+    rb[0]  = b[15];
+    rb[1]  = b[14];
+    rb[2]  = b[13];
+    rb[3]  = b[12];
+    rb[4]  = b[11];
+    rb[5]  = b[10];
+    rb[6]  = b[9];
+    rb[7]  = b[8];
+    rb[8]  = b[7];
+    rb[9]  = b[6];
+    rb[10] = b[5];
+    rb[11] = b[4];
+    rb[12] = b[3];
+    rb[13] = b[2];
+    rb[14] = b[1];
+    rb[15] = b[0];
+#endif
+}
+
+/*
+
+=item C<static void fetch_buf_be_16(unsigned char *rb, const unsigned char *b)>
+
+Converts a 16-byte big-endian buffer C<b> into a little-endian buffer C<b>.
+
+=cut
+
+*/
+
+PARROT_INLINE
+static void
+fetch_buf_be_16(ARGOUT(unsigned char *rb), ARGIN(const unsigned char *b))
+{
+    ASSERT_ARGS(fetch_buf_be_16)
+#if PARROT_BIGENDIAN
+    memcpy(rb, b, 16);
+#else
+    rb[0]  = b[15];
+    rb[1]  = b[14];
+    rb[2]  = b[13];
+    rb[3]  = b[12];
+    rb[4]  = b[11];
+    rb[5]  = b[10];
+    rb[6]  = b[9];
+    rb[7]  = b[8];
+    rb[8]  = b[7];
+    rb[9]  = b[6];
+    rb[10] = b[5];
+    rb[11] = b[4];
+    rb[12] = b[3];
+    rb[13] = b[2];
+    rb[14] = b[1];
+    rb[15] = b[0];
+#endif
+}
+
+/*
+
+=item C<static void fetch_buf_le_32(unsigned char *rb, const unsigned char *b)>
+
+Converts a 32-byte little-endian buffer C<b> into a big-endian buffer C<b>.
+
+=cut
+
+*/
+
+PARROT_INLINE
+static void
+fetch_buf_le_32(ARGOUT(unsigned char *rb), ARGIN(const unsigned char *b))
+{
+    ASSERT_ARGS(fetch_buf_le_32)
+#if !PARROT_BIGENDIAN
+    memcpy(rb, b, 32);
+#else
+    rb[0]  = b[31];
+    rb[1]  = b[30];
+    rb[2]  = b[29];
+    rb[3]  = b[28];
+    rb[4]  = b[27];
+    rb[5]  = b[26];
+    rb[6]  = b[25];
+    rb[7]  = b[24];
+    rb[8]  = b[23];
+    rb[9]  = b[22];
+    rb[10] = b[21];
+    rb[11] = b[20];
+    rb[12] = b[19];
+    rb[13] = b[18];
+    rb[14] = b[17];
+    rb[15] = b[16];
+    rb[16] = b[15];
+    rb[17] = b[14];
+    rb[18] = b[13];
+    rb[19] = b[12];
+    rb[20] = b[11];
+    rb[21] = b[10];
+    rb[22] = b[9];
+    rb[23] = b[8];
+    rb[24] = b[7];
+    rb[25] = b[6];
+    rb[26] = b[5];
+    rb[27] = b[4];
+    rb[28] = b[3];
+    rb[29] = b[2];
+    rb[30] = b[1];
+    rb[31] = b[0];
+#endif
+}
+
+/*
+
+=item C<static void fetch_buf_be_32(unsigned char *rb, const unsigned char *b)>
+
+Converts a 32-byte big-endian buffer C<b> into a little-endian buffer C<b>.
+
+=cut
+
+*/
+
+PARROT_INLINE
+static void
+fetch_buf_be_32(ARGOUT(unsigned char *rb), ARGIN(const unsigned char *b))
+{
+    ASSERT_ARGS(fetch_buf_be_32)
+#if PARROT_BIGENDIAN
+    memcpy(rb, b, 32);
+#else
+    rb[0]  = b[31];
+    rb[1]  = b[30];
+    rb[2]  = b[29];
+    rb[3]  = b[28];
+    rb[4]  = b[27];
+    rb[5]  = b[26];
+    rb[6]  = b[25];
+    rb[7]  = b[24];
+    rb[8]  = b[23];
+    rb[9]  = b[22];
+    rb[10] = b[21];
+    rb[11] = b[20];
+    rb[12] = b[19];
+    rb[13] = b[18];
+    rb[14] = b[17];
+    rb[15] = b[16];
+    rb[16] = b[15];
+    rb[17] = b[14];
+    rb[18] = b[13];
+    rb[19] = b[12];
+    rb[20] = b[11];
+    rb[21] = b[10];
+    rb[22] = b[9];
+    rb[23] = b[8];
+    rb[24] = b[7];
+    rb[25] = b[6];
+    rb[26] = b[5];
+    rb[27] = b[4];
+    rb[28] = b[3];
+    rb[29] = b[2];
+    rb[30] = b[1];
+    rb[31] = b[0];
+#endif
+}
+
+
 /*
 
 =back
-
-=head1 HISTORY
-
-Initial review by leo 2003.11.21
-
-Most routines moved from F<src/packfile.c>.
-
-Renamed PackFile_* to PF_*
-
-Added 16 byte types.
 
 =head1 TODO
 
@@ -1789,7 +2400,6 @@ C<<PF_size_<type>()>> - return the needed size in C<opcode_t> units.
 =cut
 
 */
-
 
 /*
  * Local variables:

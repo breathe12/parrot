@@ -1,0 +1,25 @@
+/*
+Copyright (C) 2010-2014, Parrot Foundation.
+
+Check if INFINITY and NAN are defined and correct for our FLOATVAL
+
+*/
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
+
+int
+main(int argc, char **argv) {
+    FLOATVAL inf = INFINITY;
+    FLOATVAL nan = NAN;
+    printf("OK: %d %d\n", isinf(inf), isnan(nan));
+    return EXIT_SUCCESS;
+}
+
+/*
+ * Local variables:
+ *   c-file-style: "parrot"
+ * End:
+ * vim: expandtab shiftwidth=4 cinoptions='\:2=2' :
+ */

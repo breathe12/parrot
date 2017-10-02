@@ -1,9 +1,9 @@
 /*
-Copyright (C) 2001-2010, Parrot Foundation.
+Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
-src/pmc/parrotlibrary.pmc - Dynamic Library
+src/pmc/parrotlibrary.pmc - ParrotLibrary PMC
 
 =head1 DESCRIPTION
 
@@ -48,7 +48,10 @@ Initializes the library with a C<NULL> oplib init function.
 
 */
 
-    VTABLE void init() {}
+    VTABLE void init() :no_wb {
+        UNUSED(SELF)
+        UNUSED(INTERP)
+    }
 
 /*
 
@@ -60,10 +63,11 @@ Destroys the library, closing the shared library.
 
 */
 
-    VTABLE void destroy() {
+    VTABLE void destroy() :no_wb {
         void *dl_handle = PMC_dlhandle(SELF);
         if (dl_handle)
             Parrot_dlclose(dl_handle);
+        PARROT_GC_WRITE_BARRIER(INTERP, SELF);
     }
 
 
@@ -77,7 +81,7 @@ Creates and returns a clone of the library.
 
 */
 
-    VTABLE PMC *clone() {
+    VTABLE PMC *clone() :no_wb {
         PMC * const dest     = Parrot_pmc_new(INTERP, SELF->vtable->base_type);
 
         if (PMC_oplib_init(SELF))
@@ -88,7 +92,7 @@ Creates and returns a clone of the library.
             PObj_custom_destroy_SET(dest);
         }
 
-        if (PMC_metadata(SELF))
+        if (!PMC_IS_NULL(PMC_metadata(SELF)))
             PMC_metadata(dest) = VTABLE_clone(INTERP, PMC_metadata(SELF));
 
         return dest;
@@ -104,7 +108,8 @@ Returns whether a library has been successfully loaded.
 
 */
 
-    VTABLE INTVAL get_bool() {
+    VTABLE INTVAL get_bool() :no_wb {
+        UNUSED(INTERP)
         return (PMC_dlhandle(SELF) != NULL);
     }
 
@@ -118,9 +123,9 @@ Returns the name of the loaded library.
 
 */
 
-    VTABLE STRING *get_string() {
+    VTABLE STRING *get_string() :no_wb {
         STRING * const key  = CONST_STRING(INTERP, "_filename");
-        PMC    * const prop = VTABLE_getprop(INTERP, SELF, key);
+        PMC    * const prop = Parrot_pmc_getprop(INTERP, SELF, key);
 
         return VTABLE_get_string(INTERP, prop);
     }
@@ -135,7 +140,8 @@ Gets the pointer to the shared library handle.
 
 */
 
-    VTABLE void *get_pointer() {
+    VTABLE void *get_pointer() :no_wb {
+        UNUSED(INTERP)
         return PMC_dlhandle(SELF);
     }
 

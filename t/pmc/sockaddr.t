@@ -15,13 +15,20 @@ Test the Sockaddr PMC.
 
 =cut
 
+.include 'socket.pasm'
+.include 'sysinfo.pasm'
+.loadlib 'sys_ops'
+
 .sub main :main
     .include 'test_more.pir'
 
-    plan(6)
+    plan(10)
 
     test_basic()
     test_bool()
+    test_string()
+    test_unix()
+    test_unix_empty()
 .end
 
 .sub test_basic
@@ -46,13 +53,66 @@ Test the Sockaddr PMC.
 .sub test_bool
     $P0 = new 'Socket'
     $P1 = $P0."sockaddr"("localhost", 1234)
-    push_eh handler
     ok($P1, 'get_bool on a SockAddr')
-    goto done
-handler:
+.end
+
+.sub test_string
+    $P0 = new 'Socket'
+
+    $P1 = $P0."sockaddr"("localhost", 1234)
+    is($P1,"127.0.0.1:1234","sockaddr stringification")
+
+    null $S0
+    $P1 = $P0."sockaddr"($S0, 56789)
+    is($P1,"127.0.0.1:56789","sockaddr stringification")
+.end
+
+.sub test_unix
+    .local pmc sock, addr
+    .local string os
+
+    sock = new 'Socket'
+    os = sysinfo .SYSINFO_PARROT_OS
+    if os == 'MSWin32' goto skip
+
+    addr = sock."sockaddr"("sock.local", 0, .PIO_PF_UNIX)
+    is(addr,"sock.local","sockaddr_un stringification")
+
+    goto end
+skip:
+    push_eh null_handler
+    addr = sock."sockaddr"("sock.local", 0, .PIO_PF_UNIX)
+
+    ok(0, "exception not thrown")
+
+null_handler:
     pop_eh
-    todo(0,'get_bool on SockAddr does not work TT#1822')
-done:
+    ok(1, "exception caught")
+end:
+.end
+
+.sub test_unix_empty
+    .local pmc sock, addr
+    .local string os
+
+    os = sysinfo .SYSINFO_PARROT_OS
+    if os == 'MSWin32' goto windows
+
+    sock = new 'Socket'
+    push_eh null_handler
+    null $S0
+    addr = sock."sockaddr"($S0, 0, .PIO_PF_UNIX)
+    $S0 = addr
+
+    ok(0, "exception not thrown")
+
+null_handler:
+    pop_eh
+    ok(1, "exception caught")
+    goto end
+windows:
+    ok(1, "unix sockets not supported on windows")
+end:
 .end
 
 # Local Variables:

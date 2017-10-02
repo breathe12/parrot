@@ -1,11 +1,11 @@
 #! perl
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 use strict;
 use warnings;
 use lib qw( . lib ../lib ../../lib );
 use Test::More;
-use Parrot::Test tests => 37;
+use Parrot::Test tests => 39;
 
 =head1 NAME
 
@@ -22,6 +22,7 @@ Tests PMC object methods.
 =cut
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "callmethodcc - unknown method" );
+.pcc_sub :main main:
     newclass P2, "Foo"
     set S0, "nada"
     callmethodcc P2, S0
@@ -32,6 +33,7 @@ CODE
 OUTPUT
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "callmethod (STR) - unknown method" );
+.pcc_sub :main main:
     newclass P2, "Foo"
     set S1, "nada"
     callmethod P2, S1, P1
@@ -42,6 +44,7 @@ CODE
 OUTPUT
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "callmethodcc - unknown method" );
+.pcc_sub :main main:
     newclass P2, "Foo"
     set S0, "nada"
     callmethodcc P2, S0
@@ -52,6 +55,7 @@ CODE
 OUTPUT
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "callmethodcc (STR) - unknown method" );
+.pcc_sub :main main:
     newclass P2, "Foo"
     set S1, "nada"
     callmethodcc P2, S1
@@ -222,7 +226,7 @@ OUTPUT
 
 pir_output_is( <<'CODE', <<'OUTPUT', "methods: self" );
 
-.sub _main
+.sub _main :main
     .local pmc A
     .local pmc B
 
@@ -246,7 +250,7 @@ pir_output_is( <<'CODE', <<'OUTPUT', "methods: self" );
     .local pmc B
 
     print "A::foo\n"
-    getprop B, "B", self
+    getprop B, self, "B"
 
     self."blah"()
     B."blah"()
@@ -277,7 +281,7 @@ OUTPUT
 
 pir_output_is( <<'CODE', <<'OUTPUT', "methods: self w arg" );
 
-.sub _main
+.sub _main :main
     .local pmc A
     .local pmc B
 
@@ -329,7 +333,7 @@ OUTPUT
 
 pir_output_is( <<'CODE', <<'OUTPUT', "methods: self w arg and ret" );
 
-.sub _main
+.sub _main :main
     .local pmc A
     .local pmc B
 
@@ -386,6 +390,7 @@ OUTPUT
 SKIP: {
     skip( "currently broken", 1 );
     pasm_output_is( <<'CODE', <<'OUTPUT', "exceptions and different runloops" );
+.pcc_sub :main main:
 _main:
     push_eh eh
 
@@ -455,6 +460,7 @@ CbA
 OUTPUT
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "find_method - unknown method" );
+.pcc_sub :main main:
     newclass P2, "Foo"
     set S0, "nada"
     find_method P0, P2, S0
@@ -642,33 +648,9 @@ CODE
 ok
 OUTPUT
 
-pir_output_is( <<'CODE', <<'OUTPUT', "self - CURRENT_OBJECT" );
-
-.sub _main
-    .local pmc A
-
-    newclass A, "A"
-    new A, ['A']
-    A."foo"()
-    end
-.end
-
-.namespace ["A"]
-
-.sub foo :method
-    .include "interpinfo.pasm"
-    $P0 = interpinfo .INTERPINFO_CURRENT_OBJECT
-    eq_addr self, $P0, ok
-    print "not "
-ok: print "ok\n"
-.end
-CODE
-ok
-OUTPUT
-
 pir_output_is( <<'CODE', <<'OUTPUT', "Bug in method calling with nonconst keys" );
 
-.sub _main
+.sub _main :main
     newclass $P0, "Foo"
 
     new $P1, ['Foo']
@@ -697,7 +679,7 @@ OUTPUT
 
 pir_output_is( <<'CODE', <<'OUTPUT', "Bug in method calling with nonconst keys - clobber" );
 
-.sub _main
+.sub _main :main
     newclass $P0, "Foo"
 
     new $P1, ['Foo']
@@ -1114,6 +1096,94 @@ pir_error_output_like( <<'CODE', <<'OUTPUT', "method called on non-object" );
 CODE
 /Method 'new' not found for non-object/
 OUTPUT
+
+pir_output_is( <<'CODE', <<'OUTPUT', "overloading isa vtable" );
+.namespace [ 'Foo' ]
+
+.sub 'isa' :vtable("isa") :method
+    .param string role
+    .return(1)
+.end
+
+.namespace []
+
+.sub main :main
+    $P0 = newclass "Foo"
+    $P1 = new $P0
+    $I0 = isa $P1, "no_role_i_ever_heard_of"
+    say $I0
+.end
+CODE
+1
+OUTPUT
+
+pir_output_is( <<'CODE', <<'OUTPUT', "overloading isa_pmc vtable" );
+.namespace [ 'Foo' ]
+
+.sub 'isa_pmc' :vtable("isa_pmc") :method
+    .param string role
+    .return(1)
+.end
+
+.namespace []
+
+.sub main :main
+    $P0 = newclass "Foo"
+    $P1 = new $P0
+    $P2 = box "no_role_i_ever_heard_of"
+    $I0 = isa $P1, $P2
+    say $I0
+.end
+CODE
+1
+OUTPUT
+
+pir_output_is( <<'CODE', <<'OUTPUT', "vtable invoke self" );
+.sub "" :anon :init :load
+    $P0 = newclass "MyFunc"
+    $P1 = newclass "MyMeth"
+.end
+.namespace ["MyFunc"]
+.sub invoke :vtable
+    .param pmc a
+    print self
+    say " ok"
+    .return ()
+.end
+.sub get_string :vtable
+    .return ("me")
+.end
+.namespace ["MyMeth"]
+.sub invoke :method :vtable
+    .param pmc a
+    print self
+    say " ok"
+    .return ()
+.end
+.sub get_string :vtable
+    .return ("me")
+.end
+.namespace []
+.sub main :main
+    $P0 = new "MyFunc"
+    $P1 = new "MyFunc"
+    $P2 = new "MyMeth"
+    $P0("a")
+    $P0($P1)
+    $P0($P0)
+    $P2("x")
+    $P2($P0)
+    $P2($P2)
+.end
+CODE
+me ok
+me ok
+me ok
+me ok
+me ok
+me ok
+OUTPUT
+
 
 # Local Variables:
 #   mode: cperl

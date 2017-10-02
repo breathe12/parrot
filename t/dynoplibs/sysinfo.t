@@ -1,5 +1,5 @@
 #!perl
-# Copyright (C) 2008-2010, Parrot Foundation.
+# Copyright (C) 2008-2014, Parrot Foundation.
 
 # initial work by Brad Gilbert b2gills <at> gmail <dot> com
 
@@ -10,7 +10,7 @@ use lib qw( . lib ../lib ../../lib );
 use Test::More;
 use Config;
 
-use Parrot::Test tests => 15;
+use Parrot::Test tests => 17;
 use Parrot::Config;
 
 
@@ -50,70 +50,100 @@ Tests for basic system information.
 
 =cut
 
+#define PARROT_INTSIZE               16
+#define PARROT_FLOATSIZE             17
+#define PARROT_POINTERSIZE           18
+#define PARROT_OS                    30
+#define PARROT_OS_VERSION            31
+#define PARROT_OS_VERSION_NUMBER     32
+#define CPU_ARCH                     33
+#define CPU_TYPE                     34
+#define PARROT_INTMAX                19
+#define PARROT_INTMIN                20
 
 my @setup = (
     { pconfig_key => 'intvalsize',
-      pasm_key    => 1,
+      pasm_key    => 16,
       pir_key     => 'SYSINFO_PARROT_INTSIZE',
       desc        => 'integer size',
       reg_type    => 'I',
     },
-    { pconfig_key => 'doublesize',
-      pasm_key    => 2,
+    { pconfig_key => 'numvalsize',
+      pasm_key    => 17,
       pir_key     => 'SYSINFO_PARROT_FLOATSIZE',
       desc        => 'float size',
       reg_type    => 'I',
     },
     { pconfig_key => 'ptrsize',
-      pasm_key    => 3,
+      pasm_key    => 18,
       pir_key     => 'SYSINFO_PARROT_POINTERSIZE',
       desc        => 'pointer size',
       reg_type    => 'I',
     },
     { pconfig_key => 'osname',
-      pasm_key    => 4,
+      pasm_key    => 30,
       pir_key     => 'SYSINFO_PARROT_OS',
       desc        => 'osname',
       reg_type    => 'S',
     },
     { pconfig_key => 'cpuarch',
-      pasm_key    => 7,
+      pasm_key    => 33,
       pir_key     => 'SYSINFO_CPU_ARCH',
       desc        => 'CPU Arch Family',
+      reg_type    => 'S',
+    },
+    { pconfig_key => 'cputype',
+      pasm_key    => 34,
+      pir_key     => 'SYSINFO_CPU_TYPE',
+      desc        => 'CPU Model',
       reg_type    => 'S',
     },
 );
 
 foreach ( @setup ) {
     if ( $_->{reg_type} eq 'I' ) {
-        pasm_output_is( <<"CODE", $PConfig{$_->{pconfig_key}}, "PASM sysinfo  $_->{desc}" );
+        pasm_output_is( <<"CODE", "$PConfig{$_->{pconfig_key}}$PConfig{$_->{pconfig_key}}\n", "PASM sysinfo  $_->{desc}" );
+    .pcc_sub :main main:
     .loadlib 'sys_ops'
     sysinfo_i_ic I1, $_->{pasm_key}
     print I1
+    set I3, $_->{pasm_key}
+    sysinfo_i_i I2, I3
+    say I2
 end
 CODE
-        pir_output_is( <<"CODE", $PConfig{$_->{pconfig_key}}, "PIR sysinfo  $_->{desc}" );
+        pir_output_is( <<"CODE", "$PConfig{$_->{pconfig_key}}$PConfig{$_->{pconfig_key}}\n", "PIR sysinfo  $_->{desc}" );
 .loadlib 'sys_ops'
 .include 'sysinfo.pasm'
 .sub main :main
     \$I0 = sysinfo .$_->{pir_key}
     print \$I0
+    \$I3 = .$_->{pir_key}
+    \$I2 = sysinfo \$I3
+    say \$I2
 .end
 CODE
     }
     else {
-        pasm_output_is( <<"CODE", $PConfig{$_->{pconfig_key}}, "sysinfo $_->{desc}" );
+        pasm_output_is( <<"CODE", "$PConfig{$_->{pconfig_key}}$PConfig{$_->{pconfig_key}}\n", "PASM sysinfo  $_->{desc}" );
+    .pcc_sub :main main:
     .loadlib 'sys_ops'
     sysinfo_s_ic S1, $_->{pasm_key}
     print S1
+    set I1, $_->{pasm_key}
+    sysinfo_s_i S2, I1
+    say S2
 end
 CODE
-        pir_output_is( <<"CODE", $PConfig{$_->{pconfig_key}}, "PIR sysinfo  $_->{desc}" );
+        pir_output_is( <<"CODE", "$PConfig{$_->{pconfig_key}}$PConfig{$_->{pconfig_key}}\n", "PIR sysinfo  $_->{desc}" );
 .loadlib 'sys_ops'
 .include 'sysinfo.pasm'
 .sub main :main
     \$S0 = sysinfo .$_->{pir_key}
     print \$S0
+    \$I1 = .$_->{pir_key}
+    \$S1 = sysinfo \$I1
+    say \$S1
 .end
 CODE
     }
@@ -132,36 +162,32 @@ SKIP:
         $osname = 'WinXP' if $osname =~ m/^WinXP/;
         TODO: {
             local $TODO = "Not Currently Implemented";
-            pasm_output_is( <<'CODE', $osname, "sysinfo OS version string" );
+            pasm_output_is( <<'CODE', "$osname$osname\n", "sysinfo OS version string" );
+    .pcc_sub :main main:
     .loadlib 'sys_ops'
     sysinfo_s_ic S1, 5
     print S1
+    set I0, 5
+    sysinfo_s_i S2, 5
+    say S2
 end
 CODE
 
             my ( $osvername, $major, $minor, $id ) = Win32::GetOSVersion();
 
-            pasm_output_is( <<'CODE', "$major.$minor", "sysinfo OS version number string" );
+            pasm_output_is( <<'CODE', "$major.$minor$major.$minor\n", "sysinfo OS version number string" );
+    .pcc_sub :main main:
     .loadlib 'sys_ops'
     sysinfo_s_ic S1, 6
     print S1
+    set I0, 6
+    sysinfo_s_i S2, 6
+    say S2
 end
 CODE
         } # END todo block
     } # END inner SKIP block
 } # END outer SKIP block
-
-SKIP:
-{
-    skip "Requires a lot of work to find out the correct answer", 1;
-
-    pasm_output_is( <<'CODE', $PConfig{archname}, "sysinfo CPU Model" );
-   .loadlib 'sys_ops'
-   sysinfo_s_ic S1, 8
-   print S1
-end
-CODE
-}
 
 # 9, 10
 
@@ -170,13 +196,19 @@ SKIP:
     skip 'Testing only in some known platforms', 1
         unless $PConfig{osname} eq 'linux';
 
-    pir_output_like( <<'CODE', '/^-[1-9][0-9]*\n[1-9][0-9]*\n$/', 'INTVAL min and max values');
+    pir_output_like( <<'CODE', '/^-[1-9][0-9]*\n[1-9][0-9]*\n-[1-9][0-9]*\n[1-9][0-9]*\n$/', 'INTVAL min and max values');
 .loadlib 'sys_ops'
 .include 'sysinfo.pasm'
 .sub main :main
     $I0 = sysinfo .SYSINFO_PARROT_INTMIN
     say $I0
     $I0 = sysinfo .SYSINFO_PARROT_INTMAX
+    say $I0
+    $I1 = .SYSINFO_PARROT_INTMIN
+    $I0 = sysinfo $I1
+    say $I0
+    $I1 = .SYSINFO_PARROT_INTMAX
+    $I0 = sysinfo $I1
     say $I0
 .end
 CODE
@@ -197,6 +229,20 @@ pir_output_is(<<'CODE', <<OUTPUT, 'INTVAL min and max coherence');
 .end
 CODE
 ok 1
+OUTPUT
+
+pir_output_is(<<'CODE', <<OUTPUT, 'bad sysinfo codes');
+.loadlib 'sys_ops'
+.sub 'main' :main
+    $I0 = sysinfo -1
+    say $I0
+
+    $I1 = sysinfo $I0
+    say $I1
+.end
+CODE
+-1
+-1
 OUTPUT
 
 # Local Variables:

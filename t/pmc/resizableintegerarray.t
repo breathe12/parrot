@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2001-2009, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -42,7 +42,7 @@ Coverage plan:
 
 .sub main :main
     .include 'test_more.pir'
-    plan(47)
+    plan(84)
 
     test_does_interfaces()
 
@@ -50,8 +50,8 @@ Coverage plan:
     test_resize()
     test_distinct_storage()
 
-    test_cant_set_negative()
-    test_cant_get_negative()
+    test_set_negative()
+    test_get_negative()
     test_set_beyond_end()
     test_get_beyond_end()
     test_delete()
@@ -74,6 +74,8 @@ Coverage plan:
     test_iterator()
     test_clone()
     test_freeze()
+    test_sort()
+    method_reverse()
 .end
 
 .sub test_does_interfaces
@@ -178,28 +180,19 @@ X1:
     is( $I0, $I4, 'All array elements stored separately' )
 .end
 
-.sub test_cant_set_negative
+.sub test_set_negative
     $P0 = new ['ResizableIntegerArray']
     $P0 = 1
-    $I0 = 1
-    push_eh eh
     $P0[-1] = -7
-    $I0 = 0
-eh:
-    pop_eh
-    ok( $I0, 'Setting with negative index should throw an exception' )
+    $I0 = $P0[-1]
+    is($I0, -7, 'Set negative index' )
 .end
 
-.sub test_cant_get_negative
+.sub test_get_negative
     $P0 = new ['ResizableIntegerArray']
     $P0 = 1
-    $I0 = 1
-    push_eh eh
     $I0 = $P0[-1]
-    $I0 = 0
-eh:
-    pop_eh
-    ok( $I0, 'Getting with negative index should throw an exception' )
+    ok( 1, 'Get negative index' )
 .end
 
 .sub test_set_beyond_end
@@ -605,6 +598,119 @@ k0:
     s = freeze ria
     th = thaw s
     is( ria, th, 'freeze/thaw copy is equal to original' )
+.end
+
+.sub test_sort
+    .local pmc array
+    array = new ['ResizableIntegerArray'], 4
+    set array[0], 10
+    set array[1], 3
+    set array[2], 5
+    set array[3], 1
+    array.'sort'()
+    $I0 = array[0]
+    is($I0, 1, 'sort works - 1st element correct')
+    $I1 = array[1]
+    is($I1, 3, 'sort works - 2nd element correct')
+    $I2 = array[2]
+    is($I2, 5, 'sort works - 3rd element correct')
+    $I3 = array[3]
+    is($I3, 10, 'sort works - 4th element correct')
+    push array, 7
+    array.'sort'()
+    $I0 = array[0]
+    is($I0, 1, 'sort works - 1st element correct after first push')
+    $I1 = array[1]
+    is($I1, 3, 'sort works - 2nd element correct after first push')
+    $I2 = array[2]
+    is($I2, 5, 'sort works - 3rd element correct after first push')
+    $I3 = array[3]
+    is($I3, 7, 'sort works - 4th element correct after first push')
+    $I4 = array[4]
+    is($I4, 10, 'sort works - 5th element correct after first push')
+    push array, -2
+    array.'sort'()
+    $I0 = array[0]
+    is($I0, -2, 'sort works - 1st element correct after second push')
+    $I1 = array[1]
+    is($I1, 1, 'sort works - 2nd element correct after second push')
+    $I2 = array[2]
+    is($I2, 3, 'sort works - 3rd element correct after second push')
+    $I3 = array[3]
+    is($I3, 5, 'sort works - 4th element correct after second push')
+    $I4 = array[4]
+    is($I4, 7, 'sort works - 5th element correct after second push')
+    $I5 = array[5]
+    is($I5, 10, 'sort works - 6th element correct after second push')
+    $I6 = pop array
+    $I0 = array[0]
+    is($I0, -2, 'sort works - 1st element correct after pop')
+    $I1 = array[1]
+    is($I1, 1, 'sort works - 2nd element correct after pop')
+    $I2 = array[2]
+    is($I2, 3, 'sort works - 3rd element correct after pop')
+    $I3 = array[3]
+    is($I3, 5, 'sort works - 4th element correct after pop')
+    $I4 = array[4]
+    is($I4, 7, 'sort works - 5th element correct after pop')
+    $I6 = shift array
+    array.'sort'()
+    $I0 = array[0]
+    is($I0, 1, 'sort works - 1st element correct after shift')
+    $I1 = array[1]
+    is($I1, 3, 'sort works - 2nd element correct after shift')
+    $I2 = array[2]
+    is($I2, 5, 'sort works - 3rd element correct after shift')
+    $I3 = array[3]
+    is($I3, 7, 'sort works - 4th element correct after shift')
+    unshift array, 4
+    array.'sort'()
+    $I0 = array[0]
+    is($I0, 1, 'sort works - 1st element correct after unshift')
+    $I1 = array[1]
+    is($I1, 3, 'sort works - 2nd element correct after unshift')
+    $I2 = array[2]
+    is($I2, 4, 'sort works - 3rd element correct after unshift')
+    $I3 = array[3]
+    is($I3, 5, 'sort works - 3rd element correct after unshift')
+    $I4 = array[4]
+    is($I4, 7, 'sort works - 5th element correct after unshift')
+.end
+
+.sub method_reverse
+    .local pmc array
+    array = new ['ResizableIntegerArray']
+    array."reverse"()
+    $I0 = elements array
+    is($I0, 0, "method_reverse - reverse of empty array")
+    push array, 3
+    array."reverse"()
+    $S0 = array[0]
+    is($S0, "3", "method_reverse - reverse of array with one element")
+    push array, 1
+    array."reverse"()
+    array."reverse"()
+    array."reverse"()
+    $S0 = array[0]
+    is($S0, "1", "method_reverse - reverse of array with two elements")
+    $S0 = array[1]
+    is($S0, "3", "method_reverse - reverse of array with two elements second element")
+    push array, 4
+    array."reverse"()
+    push array, 5
+    array."reverse"()
+    $S0 = join "", array
+    is($S0, "5134", "method_reverse - four elements")
+    array."reverse"()
+    $S0 = join "", array
+    is($S0, "4315", "method_reverse - four elements second reverse")
+    push array, 6
+    array."reverse"()
+    $S0 = join "", array
+    is($S0, "65134", "method_reverse - five elements")
+    array."reverse"()
+    $S0 = join "", array
+    is($S0, "43156", "method_reverse - five elements second reverse")
 .end
 
 # Local Variables:

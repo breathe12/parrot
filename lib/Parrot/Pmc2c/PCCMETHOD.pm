@@ -1,10 +1,11 @@
-# Copyright (C) 2004-2010, Parrot Foundation.
+# Copyright (C) 2004-2014, Parrot Foundation.
 
 package Parrot::Pmc2c::PCCMETHOD;
 use strict;
 use warnings;
 use Carp qw(longmess croak);
 use Parrot::Pmc2c::PCCMETHOD_BITS;
+use Parrot::Pmc2c::UtilFunctions qw( trim );
 
 =head1 NAME
 
@@ -71,8 +72,8 @@ use constant REGNO_NUM => 1;
 use constant REGNO_STR => 2;
 use constant REGNO_PMC => 3;
 
-=head3
-    regtype to argtype conversion hash
+=head3 regtype to argtype conversion hash
+
 =cut
 
 our $reg_type_info = {
@@ -96,28 +97,6 @@ our $reg_type_info = {
                       at => PARROT_ARG_PMC, },
 };
 
-# Perl trim function to remove whitespace from the start and end of the string
-sub trim {
-    my $string = shift;
-    $string    =~ s/^\s+//;
-    $string    =~ s/\s+$//;
-    return $string;
-}
-
-# Left trim function to remove leading whitespace
-sub ltrim {
-    my $string = shift;
-    $string    =~ s/^\s+//;
-    return $string;
-}
-
-# Right trim function to remove trailing whitespace
-sub rtrim {
-    my $string = shift;
-    $string    =~ s/\s+$//;
-    return $string;
-}
-
 =head3 C<parse_adverb_attributes>
 
   builds and returs an adverb hash from an adverb string such as
@@ -136,6 +115,7 @@ sub parse_adverb_attributes {
     if ( defined $adverb_string ) {
         ++$result{$1} while $adverb_string =~ /:(\S+)/g;
     }
+    $result{manual_wb}++ if $result{no_wb};
     return \%result;
 }
 
@@ -146,6 +126,14 @@ sub convert_type_string_to_reg_type {
     return REGNO_STR if /STRING/i;
     return REGNO_PMC if /PMC/i;
     croak "$_ not recognized as INTVAL, FLOATVAL, STRING, or PMC";
+}
+
+sub convert_pcc_sigtype {
+    my %sigtype = ('P' => 'pmc',
+                   'S' => 'string',
+                   'I' => 'integer',
+                   'N' => 'number');
+    return $sigtype{$_[0]};
 }
 
 sub gen_arg_pcc_sig {
@@ -168,41 +156,6 @@ sub gen_arg_pcc_sig {
     return $sig;
 }
 
-sub gen_arg_flags {
-    my ($param) = @_;
-
-    return PARROT_ARG_INTVAL | PARROT_ARG_OPT_FLAG
-        if exists $param->{attrs}{opt_flag};
-
-    my $flag = $reg_type_info->{ $param->{type} }->{at};
-    $flag   |= PARROT_ARG_CONSTANT     if exists $param->{attrs}{constant};
-    $flag   |= PARROT_ARG_OPTIONAL     if exists $param->{attrs}{optional};
-    $flag   |= PARROT_ARG_FLATTEN      if exists $param->{attrs}{flatten};
-    $flag   |= PARROT_ARG_SLURPY_ARRAY if exists $param->{attrs}{slurpy};
-    $flag   |= PARROT_ARG_NAME         if exists $param->{attrs}{name};
-    $flag   |= PARROT_ARG_NAME         if exists $param->{attrs}{named};
-
-    return $flag;
-}
-
-sub gen_arg_accessor {
-    my ( $arg, $arg_type ) = @_;
-    my ( $name, $reg_type, $index ) = @{$arg}{qw( name type index )};
-
-    my $tis  = $reg_type_info->{$reg_type}{s};     #reg_type_info string
-    my $tiss = $reg_type_info->{$reg_type}{ss};    #reg_type_info short string
-
-    if ( 'arg' eq $arg_type ) {
-        return "$tis $name = CTX_REG_$tiss(_ctx, $index);\n";
-    }
-    elsif ( 'result' eq $arg_type ) {
-        return "    $name = CTX_REG_$tiss(_ctx, $index);\n";
-    }
-    else {  #$arg_type eq 'param' or $arg_type eq 'return'
-        return "    CTX_REG_$tiss(_ctx, $index) = $name;\n";
-    }
-}
-
 =head3 C<rewrite_RETURNs($method, $pmc)>
 
 Rewrites the method body performing the various macro substitutions for RETURNs.
@@ -210,19 +163,23 @@ Rewrites the method body performing the various macro substitutions for RETURNs.
 =cut
 
 sub rewrite_RETURNs {
-    my ( $self, $pmc ) = @_;
-    my $method_name    = $self->name;
-    my $body           = $self->body;
+    my ( $method, $pmc ) = @_;
+    my $method_name    = $method->name;
+    my $body           = $method->body;
+    my $wb             = $method->attrs->{manual_wb}
+                         ? ''
+                         : 'PARROT_GC_WRITE_BARRIER(interp, _self);';
+    my $result;
 
     my $signature_re   = qr/
       (RETURN       #method name
       \s*              #optional whitespace
-      \( ([^\(]*) \)   #returns ( stuff ... )
+      \( ([^\(]*) \)   #returns ( type... var)
       ;?)              #optional semicolon
     /sx;
 
     croak "return not allowed in pccmethods, use RETURN instead $body"
-        if $body and $body =~ m/\breturn\b.*?;\z/s;
+        if !$method->is_vtable and $wb and $body and $body =~ m/\breturn\b.*?;\z/s;
 
     while ($body) {
         my $matched;
@@ -235,15 +192,24 @@ sub rewrite_RETURNs {
         $matched =~ /$signature_re/;
         my ( $match, $returns ) = ( $1, $2 );
 
-        my $e = Parrot::Pmc2c::Emitter->new( $pmc->filename );
+        my $e = Parrot::Pmc2c::Emitter->new( $pmc->filename(".c") );
 
         if ($returns eq 'void') {
-            $e->emit( <<"END", __FILE__, __LINE__ + 1 );
-    /*BEGIN RETURN $returns */
-    return;
-    /*END RETURN $returns */
+            if ($wb) {
+                $e->emit( <<"END" );
+    {
+        $wb
+        return;
+    }
 END
+            }
+            else {
+                $e->emit( <<"END" );
+    return;
+END
+            }
             $matched->replace( $match, $e );
+            $result = 1;
             next;
         }
 
@@ -251,32 +217,51 @@ END
         my ( $returns_signature, $returns_varargs ) =
             process_pccmethod_args( parse_p_args_string($returns), 'return' );
 
-        if ($returns_signature) {
-        $e->emit( <<"END", __FILE__, __LINE__ + 1 );
+        my $rettype;
+        if ($returns_signature and !$method->is_vtable) {
+            my $type = convert_pcc_sigtype($returns_signature);
+            unless ($type) {
+                # Fallback to slow arg filling. Currently only "II" with FileHandle.tell
+                $e->emit( <<"END" );
+    {  /*BEGIN RETURN $returns */
+        Parrot_pcc_set_call_from_c_args(interp, _call_object,
+            "$returns_signature", $returns_varargs);
+        $wb
+        return;
+    }   /*END RETURN $returns */
+END
+                $matched->replace( $match, $e );
+                $result = 1;
+                next;
+            }
+            $e->emit( <<"END" );
+     {
+        VTABLE_set_${type}_keyed_int(interp, _call_object, 0, $returns_varargs);
+        $wb
+        return;
+     }
+END
+        }
+        elsif ($wb) { # if ($returns_signature) block needed
+            $e->emit( <<"END" );
     {
-    /*BEGIN RETURN $returns */
-END
-        $e->emit( <<"END", __FILE__, __LINE__ + 1 );
-    _ret_object = Parrot_pcc_build_call_from_c_args(interp, _call_object,
-        "$returns_signature", $returns_varargs);
-    return;
-    /*END RETURN $returns */
+        $wb
+        return $returns_varargs;
     }
 END
         }
-        else { # if ($returns_signature)
-            $e->emit( <<"END", __FILE__, __LINE__ + 1 );
-    /*BEGIN RETURN $returns */
-    return;
-    /*END RETURN $returns */
+        else { # no block needed
+            $e->emit( <<"END" );
+    return $returns_varargs;
 END
         }
-
         $matched->replace( $match, $e );
+        $result = 1;
     }
-
+    return $result;
 }
 
+# This doesn't handle "const PMC *var", but "PMC *const var"
 sub parse_p_args_string {
     my ($parameters) = @_;
     my $linear_args  = [];
@@ -291,12 +276,16 @@ sub parse_p_args_string {
 
         my ( $type, $name, $rest ) = split /\s+/, trim($x), 3;
 
+        # 'PMC *const ret'
+        if ($rest and $rest !~ /^:/) { # handle const volatile or such
+            $type .= " ".$name;
+            ($name, $rest) = split /\s+/, trim($rest), 2;
+        }
+
         die "invalid PCC arg '$x': did you forget to specify a type?\n"
             unless defined $name;
 
-        if ($name =~ /\**([a-zA-Z_]\w*)/) {
-            $name = $1;
-        }
+        $name =~ s/^\*//g;
 
         my $arg = {
             type  => convert_type_string_to_reg_type($type),
@@ -354,8 +343,8 @@ sub process_pccmethod_args {
         $signature .= gen_arg_pcc_sig($arg);
         if ( $arg_type eq 'arg' ) {
             my $tis  = $reg_type_info->{$type}{"s"};     #reg_type_info string
-            $declarations .= "$tis $name;\n";
-            push @vararg_list, "&$name"
+            $declarations .= "$tis $name;\n" unless $arg->{already_declared};
+            push @vararg_list, "&$name";
         }
         elsif ( $arg_type eq 'return' ) {
             my $typenamestr = $reg_type_info->{$type}{s};
@@ -367,20 +356,6 @@ sub process_pccmethod_args {
     return ( $signature, $varargs, $declarations );
 }
 
-sub find_max_regs {
-    my ($n_regs)    = @_;
-    my $n_regs_used = [ 0, 0, 0, 0 ];
-
-    for my $x (@$n_regs) {
-        for my $i ( 0 .. 3 ) {
-            $n_regs_used->[$i] = $n_regs_used->[$i] > $x->[$i]
-                ? $n_regs_used->[$i] : $x->[$i];
-        }
-    }
-
-    return join( ", ", @$n_regs_used );
-}
-
 =head3 C<rewrite_pccmethod()>
 
     rewrite_pccmethod($method, $pmc);
@@ -388,63 +363,169 @@ sub find_max_regs {
 =cut
 
 sub rewrite_pccmethod {
-    my ( $self, $pmc ) = @_;
+    my ( $method, $pmc ) = @_;
 
-    my $e      = Parrot::Pmc2c::Emitter->new( $pmc->filename );
-    my $e_post = Parrot::Pmc2c::Emitter->new( $pmc->filename );
+    my $e      = Parrot::Pmc2c::Emitter->new( $pmc->filename(".c") );
+    my $e_post = Parrot::Pmc2c::Emitter->new( $pmc->filename(".c") );
 
     # parse pccmethod parameters, then unshift the PMC arg for the invocant
-    my $linear_args = parse_p_args_string( $self->parameters );
+    my $linear_args = parse_p_args_string( $method->parameters );
     unshift @$linear_args,
         {
-        type  => convert_type_string_to_reg_type('PMC'),
-        name  => '_self',
-        attrs => parse_adverb_attributes(':invocant')
+            type             => convert_type_string_to_reg_type('PMC'),
+            name             => '_self',
+            attrs            => parse_adverb_attributes(':invocant'),
+            already_declared => 1,
         };
 
- # The invocant is already passed in the C signature, why pass it again?
+    # The invocant is already passed in the C signature, why pass it again?
 
     my ( $params_signature, $params_varargs, $params_declarations ) =
         process_pccmethod_args( $linear_args, 'arg' );
 
-    rewrite_RETURNs( $self, $pmc );
-    rewrite_pccinvoke( $self, $pmc );
+    my $wb             = $method->attrs->{manual_wb}
+                         ? ''
+                         : 'PARROT_GC_WRITE_BARRIER(interp, _self);';
 
-    $e->emit( <<"END", __FILE__, __LINE__ + 1 );
+    rewrite_RETURNs( $method, $pmc );
+    rewrite_pccinvoke( $method, $pmc );
+
+    $e->emit( <<"END");
     PMC * const _ctx         = CURRENT_CONTEXT(interp);
-    PMC * const _ccont       = Parrot_pcc_get_continuation(interp, _ctx);
     PMC * const _call_object = Parrot_pcc_get_signature(interp, _ctx);
-    PMC * _ret_object;
 
-    { /* BEGIN PARMS SCOPE */
+    /* BEGIN PARAMS SCOPE */
 END
+    $params_declarations =~ s/\n/\n    /g;
     $e->emit(<<"END");
-$params_declarations
+    $params_declarations
 END
-    if ($params_signature) {
-        $e->emit( <<"END", __FILE__, __LINE__ + 1 );
-        Parrot_pcc_fill_params_from_c_args(interp, _call_object, "$params_signature",
-            $params_varargs);
+    # SKIP fast code for c,f,l,n,s arg adverbs
+    if ($params_signature and $params_signature !~ /[cflns]/) { # new fast branch
+        my @params_vararg_list = split(/, &/, substr($params_varargs, 1));
+        my ($arg_index, $list_index, $i) = (0, 0, 0);
+        # run-time arity-check: error if too many or too less args given.
+        # cost of the 2 if's: 4.4% in parrot-bench
+        my ($arity, $arity_opt) = (0, 0);
+        $params_signature =~ s/([PSIN])/$arity++; $1/ge;
+        $arity_opt = $params_signature =~ tr/o/o/;
+        $arity -= $arity_opt;
+        $arity -= $params_signature =~ tr/p/p/;
+        if ($arity_opt) { # slow checks
+            $e->emit( <<"END");
+    const INTVAL arity = $arity; /* \"$params_signature\" */
+    const INTVAL arity_opt  = $arity_opt;
+    INTVAL param_count = VTABLE_elements(interp, _call_object);
+    if (param_count < arity)
+        Parrot_ex_throw_from_c_args(interp, NULL,
+                                    EXCEPTION_INVALID_OPERATION,
+                                    "too few arguments: %d passed, %d expected",
+                                    param_count, arity);
+    if (param_count > arity + arity_opt)
+        Parrot_ex_throw_from_c_args(interp, NULL,
+                                    EXCEPTION_INVALID_OPERATION,
+                                    "too many arguments: %d passed, %d expected",
+                                    param_count, arity + arity_opt);
+END
+        }
+        else { # only one check
+            $e->emit( <<"END");
+    const INTVAL arity = $arity; /* \"$params_signature\" */
+    INTVAL param_count = VTABLE_elements(interp, _call_object);
+    if (param_count != arity)
+        Parrot_ex_throw_from_c_args(interp, NULL,
+                                    EXCEPTION_INVALID_OPERATION,
+                                    "wrong number of arguments: %d passed, %d expected",
+                                    param_count, arity);
+END
+        }
+        # TODO: handle c for constant
+        while ($i < length($params_signature)) {
+            my $sig = substr($params_signature, $i, 1);
+            my $sig2 = substr($params_signature, $i+1, 1);
+            my $type = convert_pcc_sigtype($sig);
+            $i++;
+            if ($type) {
+                if ($sig2 eq "o") { # for :optional
+                    $e->emit( "    if (param_count > $list_index) {\n    " );
+                }
+                $e->emit( <<"END");
+    $params_vararg_list[$arg_index] = VTABLE_get_${type}_keyed_int(interp, _call_object, $list_index);
+END
+                if ($sig2 eq "o") { # for :optional
+                    my $opt_arg = $params_vararg_list[$arg_index];
+                    my $null_def = { 'P' => 'PMCNULL',
+                                     'S' => 'STRINGNULL',
+                                     'I' => '0',
+                                     'N' => '0.0' };
+                    my $def = $null_def->{$sig};
+                    if (substr($params_signature, $i, 3) eq "oIp") { # and set :opt_flag
+                        my $opt_flag = $params_vararg_list[$arg_index + 1];
+                        $arg_index++;
+                        $list_index++;
+                        $i += 2;
+                        $e->emit( <<"END");
+        $opt_flag = 1;
+    }
+    else {
+        $opt_arg = $def;
+        $opt_flag = 0;
+    }
+END
+                    }
+                    else { # no :opt_flag, only :optional
+                        $e->emit( <<"END");
+    }
+    else {
+        $opt_arg = $def;
+    }
+END
+                    }
+                    $i++;
+                }
+                $arg_index++;
+                $list_index++ unless $sig2 eq "o";
+            }
+            elsif ($sig eq 'i' # for invocant
+                   and $params_vararg_list[$arg_index - 1] eq '_self'
+                   and substr($params_signature, $i-2, 1) eq 'P') {
+            }
+            else {
+                warn "Warning: ".$pmc->name.".".$method->name."(\"$params_signature\"): unhandled arg adverb $sig for $params_vararg_list[$arg_index - 1]";
+                $e->emit( <<"END");
+    /* unhandled $sig for $params_vararg_list[$arg_index - 1] */
+END
+            }
+        }
+    }
+    elsif ($params_signature) { # the old slow branch
+        $e->emit( <<"END");
+    Parrot_pcc_fill_params_from_c_args(interp, _call_object, "$params_signature",
+        $params_varargs);
 END
     }
-    $e->emit( <<'END', __FILE__, __LINE__ + 1 );
+    $e->emit( <<'END' );
+
     { /* BEGIN PMETHOD BODY */
 END
 
-    $e_post->emit( <<'END', __FILE__, __LINE__ + 1 );
+    $e_post->emit( <<"END");
 
     } /* END PMETHOD BODY */
-    } /* END PARAMS SCOPE */
+
+    $wb
+
+    /* END PARAMS SCOPE */
     return;
 END
-    $self->return_type('void');
-    $self->parameters('');
+    $method->return_type('void');
+    $method->parameters('');
     my $e_body = Parrot::Pmc2c::Emitter->new( $pmc->filename );
     $e_body->emit($e);
-    $e_body->emit( $self->body );
+    $e_body->emit( $method->body );
     $e_body->emit($e_post);
-    $self->body($e_body);
-    $self->{PCCMETHOD} = 1;
+    $method->body($e_body);
+    $method->{PCCMETHOD} = 1;
 
     return 1;
 }
@@ -598,20 +679,80 @@ sub process_parameter {
     return ($type, @arg_names);
 }
 
-sub make_arg_pmc {
-    my ($args, $name) = @_;
+=head3 C<rewrite_multi_sub($method, $pmc)>
 
-    return '' unless @$args;
+B<Purpose:>  Parse and Build PMC multiple dispatch subs.
 
-    my $code = "    VTABLE_set_integer_native(interp, $name, " . @$args
-             . ");\n";
+B<Arguments:>
 
-    for my $i ( 0 .. $#{$args} ) {
-        $code .= "    VTABLE_set_integer_keyed_int(interp, $name, "
-              .  "$i, $args->[$i]);\n";
+=over 4
+
+=item * C<self>
+
+=item * C<method>
+
+Current Method Object
+
+=item * C<body>
+
+Current Method Body
+
+=back
+
+=cut
+
+sub rewrite_multi_sub {
+    my ( $method, $pmc ) = @_;
+    my @param_types = ();
+    my @new_params = ();
+
+    # Fixup the parameters, standardizing PMC types and extracting type names
+    # for the multi name.
+    for my $param ( split /,/, $method->parameters ) {
+        my ( $type, $name, $rest ) = split /\s+/, &Parrot::Pmc2c::PCCMETHOD::trim($param), 3;
+
+        die "Invalid MULTI parameter '$param': missing type or name\n"
+             unless defined $name;
+        die "Invalid MULTI parameter '$param': attributes not allowed on multis\n"
+             if defined $rest;
+
+        # Clean any '*' out of the name or type.
+        if ($name =~ /[\**]?(\"?\w+\"?)/) {
+            $name = $1;
+        }
+        $type =~ s/\*+//;
+
+        # Capture the actual type for the sub name
+        push @param_types, $type;
+
+        # Pass standard parameter types unmodified.
+        # All other param types are rewritten as PMCs.
+        if ($type eq 'STRING' or $type eq 'PMC' or $type eq 'INTVAL') {
+            push @new_params, $param;
+        }
+        elsif ($type eq 'FLOATVAL') {
+            push @new_params, $param;
+        }
+        else {
+            push @new_params, "PMC *$name";
+        }
     }
 
-    return $code;
+    $method->parameters(join (",", @new_params));
+
+    $method->{MULTI_sig}      = [@param_types];
+    $method->{MULTI_full_sig} = join(',', @param_types);
+    $method->{MULTI}          = 1;
+
+    return 1;
+}
+
+sub mangle_name {
+    my ( $method ) = @_;
+    $method->symbol( $method->name );
+    $method->name( $method->type eq Parrot::Pmc2c::Method::MULTI()
+        ?  (join '_', 'multi', $method->name, @{ $method->{MULTI_sig} })
+        : "nci_@{[$method->name]}" );
 }
 
 1;

@@ -1,5 +1,5 @@
 #! perl
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -22,8 +22,7 @@ use Carp;
 use File::Spec;
 use lib qw( lib );
 use Parrot::Config;
-use IO::CaptureOutput qw| capture |;
-use Parrot::Config '%PConfig';
+use Parrot::Configure::Utils qw| capture |;
 
 BEGIN {
     eval "use Test::Builder::Tester;";
@@ -31,7 +30,7 @@ BEGIN {
         plan( skip_all => "Test::Builder::Tester not installed\n" );
         exit 0;
     }
-    plan( tests => 120 );
+    plan( tests => 112 );
 }
 
 use lib qw( . lib ../lib ../../lib );
@@ -72,8 +71,6 @@ can_ok( 'Parrot::Test', $_ ) for ( qw/
     pir_error_output_like           pir_error_output_unlike
     pir_output_is                   pir_output_isnt
     pir_output_like                 pir_output_unlike
-    pir_2_pasm_is                   pir_2_pasm_isnt
-    pir_2_pasm_like                 pir_2_pasm_unlike
     generate_languages_functions
     per_test
     plan
@@ -95,6 +92,7 @@ my ( $desc, $err, $line );
 $desc = 'pasm_output_is: success';
 test_out("ok 1 - $desc");
 pasm_output_is( <<'CODE', <<'OUTPUT', $desc );
+.pcc_sub :main main:
     print "foo\n"
     end
 CODE
@@ -114,6 +112,7 @@ ERR
 chomp $err;
 test_err($err);
 pasm_output_is( <<'CODE', <<"OUTPUT", $desc );
+.pcc_sub :main main:
     print "foo\n"
     end
 CODE
@@ -125,6 +124,7 @@ test_test($desc);
 $desc = 'pasm_output_isnt: success';
 test_out("ok 1 - $desc");
 pasm_output_isnt( <<'CODE', <<"OUTPUT", $desc );
+.pcc_sub :main main:
     print "foo\n"
     end
 CODE
@@ -150,6 +150,7 @@ ERR
 chomp $err;
 test_err( $err );
 pasm_output_isnt( <<'CODE', <<'OUTPUT', $desc );
+.pcc_sub :main main:
     print "foo\n"
     end
 CODE
@@ -160,6 +161,7 @@ test_test(title => $desc, skip_err => 1);
 $desc = 'pasm_output_like: success';
 test_out("ok 1 - $desc");
 pasm_output_like( <<'CODE', <<'OUTPUT', $desc );
+.pcc_sub :main main:
     print "foo\n"
     end
 CODE
@@ -179,6 +181,7 @@ ERR
 chomp $err;
 test_err($err);
 pasm_output_like( <<'CODE', <<"OUTPUT", $desc );
+.pcc_sub :main main:
     print "foo\n"
     end
 CODE
@@ -353,44 +356,6 @@ OUTPUT
     test_test($desc);
 }
 
-##### PIR-to-PASM output test functions #####
-
-my $pir_2_pasm_code = <<'ENDOFCODE';
-.sub _test
-   noop
-   end
-.end
-ENDOFCODE
-
-pir_2_pasm_is( <<CODE, <<'OUT', "pir_2_pasm:  added return - end" );
-$pir_2_pasm_code
-CODE
-# IMCC does produce b0rken PASM files
-# see http://guest@rt.perl.org/rt3/Ticket/Display.html?id=32392
-_test:
-  noop
-  end
-OUT
-
-pir_2_pasm_isnt( <<CODE, <<'OUT', "pir_2_pasm:  added return - end" );
-$pir_2_pasm_code
-CODE
-_test:
-  noop
-  bend
-OUT
-
-pir_2_pasm_like( <<CODE, <<'OUT', "pir_2_pasm:  added return - end" );
-$pir_2_pasm_code
-CODE
-/noop\s+end/s
-OUT
-
-pir_2_pasm_unlike( <<CODE, <<'OUT', "pir_2_pasm:  added return - end" );
-$pir_2_pasm_code
-CODE
-/noop\s+bend/s
-OUT
 
 my $file = q{t/perl/testlib/hello.pasm};
 my $expected = qq{Hello World\n};
@@ -569,17 +534,19 @@ is($chdir, '', "Got expected value for working directory");
     }
 }
 
-my $command_orig;
-$command_orig = 'ls';
-is_deeply( Parrot::Test::_handle_command($command_orig), [ qw( ls ) ],
-    "Scalar command transformed into array ref as expected");
-$command_orig = [ qw( ls -l ) ];
-is( Parrot::Test::_handle_command($command_orig), $command_orig,
-    "Array ref holding multiple commands unchanged as expected");
+{
+    my $cmd = 'ls';
+    my @expected = $ENV{VALGRIND} ? ($ENV{VALGRIND}." $cmd") : ($cmd);
+    is_deeply( Parrot::Test::_handle_command($cmd), [ @expected ],
+               "Scalar command transformed into array ref as expected");
+    $cmd = [ qw( ls -l ) ];
+    is( Parrot::Test::_handle_command($cmd), $cmd,
+        "Array ref holding multiple commands unchanged as expected");
+}
 
 {
     my $oldvalgrind      = defined $ENV{VALGRIND} ? $ENV{VALGRIND} : '';
-    $command_orig        = 'ls';
+    my $command_orig     = 'ls';
     my $foo              = 'foobar';
     local $ENV{VALGRIND} = $foo;
     my $ret              = Parrot::Test::_handle_command($command_orig);

@@ -1,5 +1,5 @@
 #!perl
-# Copyright (C) 2001-2009, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 use strict;
 use warnings;
@@ -45,7 +45,7 @@ $opts{D} = sprintf( '%x', hex(40) | (exists $opts{D} ? hex($opts{D}) : 0));
 my $args = get_test_prog_args(
     \%opts, $longopts->{gc_debug}, $longopts->{run_exec}
 );
-$ENV{TEST_PROG_ARGS} = $args;
+$ENV{TEST_PROG_ARGS} .= $args;
 
 my @tests;
 if ($longopts->{code}) {
@@ -77,16 +77,18 @@ if ($longopts->{archive}) {
     $harness = TAP::Harness::Archive->new(
         {
             verbosity        => $ENV{HARNESS_VERBOSE},
-            archive          => 'parrot_test_run.tar.gz',
+            archive          => 't/archive/parrot_test_run.tar.gz',
             merge            => 1,
             extra_properties => \%env_data,
             extra_files      => [ 'myconfig', 'config_lib.pir' ],
             jobs             => $ENV{TEST_JOBS} || 1,
         }
     );
-    $harness->runtests(@tests);
-    send_archive_to_smolder(%env_data) if $longopts->{send_to_smolder};
-
+    my $results = $harness->runtests(@tests);
+    # smolder was too unstable to accept most reports, Fixed with GH #1078
+    eval { send_archive_to_smolder(%env_data); } if $longopts->{send_to_smolder};
+    warn $@ if $@;
+    exit ( $results->all_passed() ? 0 : 1 );
 }
 elsif ($longopts->{html}) {
     generate_html_smoke_report(
@@ -105,10 +107,11 @@ else {
     }
     else {
         $harness = TAP::Harness->new({
-            verbosity => $ENV{HARNESS_VERBOSE},
-            merge     => 0,
-            jobs      => $ENV{TEST_JOBS} || 1,
+            verbosity  => $ENV{HARNESS_VERBOSE},
+            merge      => 0,
+            jobs       => $ENV{TEST_JOBS} || 1,
             directives => 1,
+            timer      => $ENV{HARNESS_TIMER} || 0,
         });
     }
     my $results = $harness->runtests(@tests);
@@ -125,6 +128,10 @@ t/harness - Parrot Test Harness
     % perl t/harness [options] [testfiles]
 
 =head1 DESCRIPTION
+
+This is the Parrot Test Harness.
+
+=head2 Command-line Options - Short:
 
 The short command line options are:
 
@@ -158,7 +165,7 @@ Run fast core.
 
 compile to Parrot bytecode and then run the bytecode.
 
-=item C<-O[012]>
+=item C<-O[012p]>
 
 Run optimized to the specified level.
 
@@ -169,6 +176,8 @@ C<-D40> (fill I, N registers with garbage) is always enabled.
 See 'parrot --help-debug' for available flags.
 
 =back
+
+=head2 Command-Line Options:  Long
 
 There are also long command line options:
 
@@ -188,16 +197,23 @@ Run only the file metadata and basic coding standards tests.
 
 =back
 
-=head1 HISTORY
+=head2 Impact of Environmental Variables
 
-Mike Lambert stole F<t/harness> for F<languages/perl6/t/harness>.
+You may set the following environmental variables to positive integer values
+to get more verbose output, to run tests in parallel, or to get clock times in
+your standard output.
 
-Leo Toetsch stole F<languages/perl6/t/harness> for F<imcc/t/harness>.
+    HARNESS_VERBOSE
+    TEST_JOBS
+    HARNESS_TIMER
+    TEST_PROG_ARGS
 
-Bernhard Schmalhofer merged F<imcc/t/harness> back into F<t/harness>.
+If C<TEST_PROG_ARGS> is set, it needs an ending space, as the other parrot
+args are added to this. E.g.
+
+C<TEST_PROG_ARGS='--gc-nursery-size=0.01 ' perl t/harness --gc-debug t/pmc/coroutine.t>
 
 =cut
-
 
 # Local Variables:
 #   mode: cperl

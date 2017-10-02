@@ -1,5 +1,5 @@
 
-=head1 Include Example
+=head1 DESCRIPTION
 
 This example demonstrates how to include another stream inside a stream.
 
@@ -13,7 +13,7 @@ Creates a counter stream and dumps it.
 
 =cut
 
-.sub _main
+.sub _main :main
     .local pmc stream
 
     load_bytecode 'Stream/Sub.pbc'

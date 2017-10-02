@@ -8,9 +8,16 @@
  *  References:
  */
 
-/* Only parrot core files should include this file.
-   Extensions should include <parrot/extend.h>.
-   Programs embedding parrot should include <parrot/embed.h>.
+/*
+    This file contains definitions for functions and data structures used by
+    Parrot. This file is currently included in almost all Parrot source files
+    and is typically required in add-in extensions. This file is *not* used
+    when embedding Parrot. For embedding, use <parrot/api.h>. For extensions,
+    you probably also need <parrot/extend.h> in addition to <parrot/parrot.h>.
+
+    In the future, <parrot/parrot.h> might not be required for extensions. For
+    now, it is required for most purposes because the extending API is not
+    stable or mature enough to be used without parrot.h.
 */
 
 #ifndef PARROT_PARROT_H_GUARD
@@ -38,35 +45,18 @@
 
 /* Other headers, where available */
 
-/* FreeBSD wants this order:
-
-     #include <sys/types.h>
-     #include <sys/socket.h>
-     #include <netinet/in.h>
-     #include <arpa/inet.h>
-
-   as netinet/in.h relies on things defined earlier
-*/
-
 #ifdef PARROT_HAS_HEADER_SYSTYPES
 #  include <sys/types.h>
 #endif /* PARROT_HAS_HEADER_SYSTYPES */
 
-#ifdef PARROT_HAS_HEADER_SYSSOCKET
-#  include <sys/socket.h>
-#endif /* PARROT_HAS_HEADER_SYSSOCKET */
-
-#ifdef PARROT_HAS_HEADER_NETINETIN
-#  include <netinet/in.h>
-#endif /* PARROT_HAS_HEADER_NETINETIN */
-
-#ifdef PARROT_HAS_HEADER_ARPAINET
-#  include <arpa/inet.h>
-#endif /* PARROT_HAS_HEADER_ARPAINET */
-
 #ifdef PARROT_HAS_HEADER_UNISTD
 #  include <unistd.h>
 #endif /* PARROT_HAS_HEADER_UNISTD */
+
+#ifdef PARROT_HAS_HEADER_PROCESS
+#  include <process.h>
+#  define getpid _getpid
+#endif /* PARROT_HAS_HEADER_PROCESS */
 
 #ifdef PARROT_HAS_HEADER_SYSMMAN
 #  include <sys/mman.h>
@@ -87,10 +77,6 @@
 #  include <fcntl.h>
 #endif /* PARROT_HAS_HEADER_FCNTL */
 
-#ifdef PARROT_HAS_HEADER_NETDB
-#  include <netdb.h>
-#endif /* PARROT_HAS_HEADER_NETDB */
-
 #ifdef PARROT_HAS_HEADER_SYSSTAT
 #  include <sys/stat.h>
 #endif /* PARROT_HAS_HEADER_SYSSTAT */
@@ -109,7 +95,11 @@ typedef jmp_buf Parrot_jump_buff;
 #endif
 
 #define NUM_REGISTERS 32
-#define PARROT_MAGIC 0x13155a1
+
+/* Make 'PARROT_MAGIC', at least, agree with the '*.pbc' files,
+   even though it's unused.
+ */
+#define PARROT_MAGIC  0xfe5042430a1a0a
 
 typedef void STRING_FUNCS;
 typedef struct parrot_interp_t Interp;
@@ -145,7 +135,10 @@ typedef struct parrot_interp_t Interp;
 #  endif /* PTR_SIZE == LONG_SIZE */
 #endif /* PTR_SIZE == INTVAL_SIZE */
 #define PTR2INTVAL(p)    INTVAL2PTR(INTVAL, (p))
-#define PTR2UINTVAL(p)    UINTVAL2PTR(UINTVAL, (p))
+#define PTR2UINTVAL(p)   UINTVAL2PTR(UINTVAL, (p))
+#define PTR2ULONG(p)     UINTVAL2PTR(unsigned long, (p))
+/* cast a const qualifier away. */
+#define PTR_UNCONST(any, p) INTVAL2PTR((any), INTVAL2PTR(INTVAL, (p)))
 
 /*
  * some compilers don't like lvalue casts, so macroize them
@@ -203,15 +196,17 @@ typedef void (*funcptr_t)(void);
 
 /* define macros for converting between data and function pointers.  As it
  * turns out, ANSI C does appear to permit you to do this conversion if you
- * convert the value to an integer (well, a value type large enough to hold
+ * convert the value to a long (well, a value type large enough to hold
  * a pointer) in between.  Believe it or not, this even works on TenDRA (tcc).
- *
- * NOTE!  UINTVAL is incorrect below.  It should be UINTPTR or something like
- * that. The equivalent of C99's uintptr_t- a non-pointer data type that can
- * hold a pointer.
+ * Note that on win64 MSVC a long is 4 bytes, not 8.
  */
-#define D2FPTR(x) UINTVAL2PTR(funcptr_t, PTR2UINTVAL(x))
-#define F2DPTR(x) UINTVAL2PTR(void *, PTR2UINTVAL((funcptr_t) (x)))
+#ifdef _MSC_VER
+#  define D2FPTR(x) UINTVAL2PTR(funcptr_t, PTR2UINTVAL(x))
+#  define F2DPTR(x) UINTVAL2PTR(void *, PTR2UINTVAL((funcptr_t) (x)))
+#else
+#  define D2FPTR(x) UINTVAL2PTR(funcptr_t, PTR2ULONG(x))
+#  define F2DPTR(x) UINTVAL2PTR(void *, PTR2ULONG((funcptr_t) (x)))
+#endif
 
 /* On Win32 we need the constant O_BINARY for open() (at least for Borland C),
    but on UNIX it doesn't exist, so set it to 0 if it's not defined
@@ -223,7 +218,9 @@ typedef void (*funcptr_t)(void);
 /* Hide our struct copying behind macros */
 /* Copying to struct pointer from struct pointer */
 #define STRUCT_COPY(d, s)    (PARROT_ASSERT(d), PARROT_ASSERT(s), *(d)=*(s))
-#define STRUCT_COPY_N(d, s, n) (PARROT_ASSERT(d), PARROT_ASSERT(s), PARROT_ASSERT(sizeof (*(d))==sizeof (*(s))), memcpy((d), (s), sizeof (*(d))*(n)))
+#define STRUCT_COPY_N(d, s, n) \
+    (PARROT_ASSERT(d), PARROT_ASSERT(s), PARROT_ASSERT(sizeof (*(d))==sizeof (*(s))), \
+     memcpy((d), (s), sizeof (*(d))*(n)))
 /* Copying to struct pointer from struct */
 #define STRUCT_COPY_FROM_STRUCT(d, s)    (PARROT_ASSERT(d), *(d)=(s))
 
@@ -250,7 +247,6 @@ typedef struct PackFile_ByteCode PackFile_ByteCode;
 
 #include "parrot/settings.h"
 #include "parrot/enums.h"
-#include "parrot/platform.h"
 #include "parrot/platform_interface.h"
 #include "parrot/global_setup.h"
 #include "parrot/caches.h"
@@ -258,7 +254,6 @@ typedef struct PackFile_ByteCode PackFile_ByteCode;
 #include "parrot/datatypes.h"
 #include "parrot/encoding.h"
 #include "parrot/string.h"
-#include "parrot/string_primitives.h"
 #include "parrot/hash.h"
 #include "parrot/pmc_freeze.h"
 #include "parrot/vtable.h"
@@ -280,15 +275,14 @@ typedef struct PackFile_ByteCode PackFile_ByteCode;
 #include "parrot/nci.h"
 #include "parrot/thread.h"
 #include "parrot/scheduler.h"
-#include "parrot/longopt.h"
 #include "parrot/oo.h"
 #include "parrot/vtables.h"
 #include "parrot/multidispatch.h"
 #include "parrot/library.h"
 #include "parrot/namespace.h"
-#include "parrot/stat.h"
 #include "parrot/hll.h"
 #include "parrot/pbcversion.h"
+#include "parrot/disassemble.h"
 
 #endif /* PARROT_PARROT_H_GUARD */
 

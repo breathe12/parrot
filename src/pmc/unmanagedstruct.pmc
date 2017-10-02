@@ -1,14 +1,19 @@
 /*
-Copyright (C) 2001-2010, Parrot Foundation.
+Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
-src/pmc/unmanagedstruct.pmc - C struct with unmanaged memory
+src/pmc/unmanagedstruct.pmc - UnManagedStruct PMC
 
 =head1 DESCRIPTION
 
 PMC class to hold C C<struct>s that Parrot's not responsible for
-disposing of.
+disposing of, C struct for unmanaged memory in NCI.
+They are typically used to access structures returned by NCI calls.
+Members of this struct are not subject to garbage collection
+during run-time.
+
+But if you can, rather use PtrBuf objects instead.
 
 Buffer can be accessed using keyed assignments to PMC. Out of
 bounds access will very likely segfault.
@@ -22,6 +27,7 @@ bounds access will very likely segfault.
 */
 
 #include "parrot/compiler.h"
+#include "parrot/string_funcs.h"
 
 /* HEADERIZER HFILE: none */
 /* HEADERIZER BEGIN: static */
@@ -94,29 +100,32 @@ static PMC* ret_pmc(PARROT_INTERP,
         __attribute__nonnull__(3);
 
 PARROT_WARN_UNUSED_RESULT
-PARROT_CAN_RETURN_NULL
+PARROT_CANNOT_RETURN_NULL
 static STRING* ret_string(PARROT_INTERP, ARGIN(char *p), int type)
         __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
 static void set_float(PARROT_INTERP,
-    ARGIN(char *p),
+    ARGOUT(char *p),
     int type,
     FLOATVAL value)
         __attribute__nonnull__(1)
-        __attribute__nonnull__(2);
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*p);
 
-static void set_int(PARROT_INTERP, ARGIN(char *p), int type, INTVAL value)
+static void set_int(PARROT_INTERP, ARGOUT(char *p), int type, INTVAL value)
         __attribute__nonnull__(1)
-        __attribute__nonnull__(2);
+        __attribute__nonnull__(2)
+        FUNC_MODIFIES(*p);
 
 static void set_string(PARROT_INTERP,
-    ARGIN(char *p),
+    ARGOUT(char *p),
     int type,
     ARGIN(STRING *value))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2)
-        __attribute__nonnull__(4);
+        __attribute__nonnull__(4)
+        FUNC_MODIFIES(*p);
 
 #define ASSERT_ARGS_calc_align __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
@@ -186,7 +195,7 @@ char_offset_int(PARROT_INTERP, ARGIN(PMC *pmc), INTVAL ix, ARGOUT(int *type))
     ix *= 3;
 
     if (!PARROT_UNMANAGEDSTRUCT(pmc)->init)
-        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNEXPECTED_NULL,
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_UNEXPECTED_NULL,
             "Missing struct initializer");
 
     n = (size_t)VTABLE_elements(interp, PARROT_UNMANAGEDSTRUCT(pmc)->init);
@@ -224,26 +233,26 @@ key_2_idx(PARROT_INTERP, ARGIN(PMC *pmc), ARGIN(PMC *key))
     int ix = 0;
 
     if (!PARROT_UNMANAGEDSTRUCT(pmc)->init)
-        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNEXPECTED_NULL,
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_UNEXPECTED_NULL,
             "Missing struct initializer");
 
     if (PObj_get_FLAGS(key) & KEY_string_FLAG) {
         PMC * const types = PARROT_UNMANAGEDSTRUCT(pmc)->init;
 
         if (types->vtable->base_type == enum_class_OrderedHash) {
-            Hash       * const hash = (Hash *)VTABLE_get_pointer(interp,
+            const Hash * const hash = (Hash *)VTABLE_get_pointer(interp,
                     VTABLE_get_pmc(interp, types));
-            HashBucket * const b    = parrot_hash_get_bucket(interp, hash,
-                    hash_key_from_string(interp, hash, VTABLE_get_string(interp, key)));
+            const HashBucket * const b = Parrot_hash_get_bucket(interp, hash,
+                    Parrot_hash_key_from_string(interp, hash, VTABLE_get_string(interp, key)));
 
             if (!b)
-                Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_KEY_NOT_FOUND,
+                Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_KEY_NOT_FOUND,
                     "key doesn't exist");
 
             ix = b - hash->buckets;
         }
         else
-            Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_INVALID_OPERATION,
+            Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_OPERATION,
                 "unhandled type aggregate");
 
         ix /= 3;
@@ -272,7 +281,7 @@ static char *
 char_offset_key(PARROT_INTERP, ARGIN(PMC *pmc), ARGIN(PMC *key), ARGOUT(int *type))
 {
     ASSERT_ARGS(char_offset_key)
-    size_t offs, count, size, max;
+    size_t count, size, max;
     int    ix;
     PMC   *next, *init;
     char  *p;
@@ -306,7 +315,7 @@ char_offset_key(PARROT_INTERP, ARGIN(PMC *pmc), ARGIN(PMC *key), ARGOUT(int *typ
         /* the struct PMC is hanging off the initializer element
          * as property "_struct" */
         PMC * const ptr = VTABLE_get_pmc_keyed_int(interp, init, ix);
-        init            = VTABLE_getprop(interp, ptr, CONST_STRING(interp, "_struct"));
+        init            = Parrot_pmc_getprop(interp, ptr, CONST_STRING(interp, "_struct"));
 
         PARROT_ASSERT(init
             && (init->vtable->base_type == enum_class_UnManagedStruct
@@ -314,13 +323,14 @@ char_offset_key(PARROT_INTERP, ARGIN(PMC *pmc), ARGIN(PMC *key), ARGOUT(int *typ
 
         /* array of structs */
         if (max > 1) {
+            size_t offs;
             if (Parrot_key_next(interp, next))
                 next = Parrot_key_next(interp, next);
 
             offs = VTABLE_get_integer(interp, init);
 
 #ifdef STRUCT_DEBUG
-            Parrot_io_eprintf(interp, "offs = %d\n", (int)offs);
+            Parrot_io_eprintf(interp, "# offs = %d\n", (int)offs);
 #endif
 
             p += offs * count;
@@ -426,7 +436,7 @@ ret_int(PARROT_INTERP, ARGIN(const char *p), int type)
       case enum_type_char:
         return *p;
       default:
-        Parrot_ex_throw_from_c_args(interp, NULL, 1,
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_OPERATION,
                 "returning unhandled int type in struct");
     }
 }
@@ -454,7 +464,7 @@ ret_float(PARROT_INTERP, ARGIN(const char *p), int type)
       case enum_type_double:
         return (FLOATVAL) *(const double *)p;
       default:
-        Parrot_ex_throw_from_c_args(interp, NULL, 1,
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_OPERATION,
                 "returning unhandled float type in struct");
     }
 }
@@ -470,13 +480,13 @@ Returns the element of type C<type> starting at C<*p> as a Parrot string.
 */
 
 PARROT_WARN_UNUSED_RESULT
-PARROT_CAN_RETURN_NULL
+PARROT_CANNOT_RETURN_NULL
 static STRING*
 ret_string(PARROT_INTERP, ARGIN(char *p), int type)
 {
     ASSERT_ARGS(ret_string)
     if (type == enum_type_cstr) {
-        char  *cstr = *(char **) p;
+        const char * const cstr = *(const char **) p;
         if (cstr) {
             const size_t len  = strlen(cstr);
             /* TODO
@@ -491,10 +501,10 @@ ret_string(PARROT_INTERP, ARGIN(char *p), int type)
                     Parrot_latin1_encoding_ptr, 0);
         }
         else
-            return NULL;
+            return STRINGNULL;
     }
 
-    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_INVALID_OPERATION,
+    Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_OPERATION,
         "returning unhandled string type in struct");
 }
 
@@ -527,10 +537,10 @@ ret_pmc(PARROT_INTERP, ARGIN(PMC *pmc), ARGIN(char *p), int type, INTVAL idx)
         /* now check if initializer has a signature attached */
         if (PMC_metadata(ptr)) {
             STRING *signature_str = CONST_STRING(interp, "_signature");
-            PMC * const sig = VTABLE_getprop(interp, ptr, signature_str);
+            PMC * const sig = Parrot_pmc_getprop(interp, ptr, signature_str);
             if (VTABLE_defined(interp, sig)) {
                 STRING * const sig_str = VTABLE_get_string(interp, sig);
-                ret             = Parrot_pmc_new(interp, enum_class_NCI);
+                ret = Parrot_pmc_new(interp, enum_class_NCI);
                 VTABLE_set_pointer_keyed_str(interp, ret, sig_str,
                             *(PMC **)p);
             }
@@ -542,10 +552,9 @@ ret_pmc(PARROT_INTERP, ARGIN(PMC *pmc), ARGIN(char *p), int type, INTVAL idx)
 
         /* grab the struct from the metadata */
         if (PMC_metadata(ptr))
-            ret = VTABLE_getprop(interp, ptr, CONST_STRING(interp, "_struct"));
+            ret = Parrot_pmc_getprop(interp, ptr, CONST_STRING(interp, "_struct"));
         else {
-            Parrot_ex_throw_from_c_args(interp, NULL,
-                    EXCEPTION_INVALID_OPERATION,
+            Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_OPERATION,
                     "no initializer available for nested struct");
         }
 
@@ -562,12 +571,14 @@ ret_pmc(PARROT_INTERP, ARGIN(PMC *pmc), ARGIN(char *p), int type, INTVAL idx)
 
 =item C<static void set_int(PARROT_INTERP, char *p, int type, INTVAL value)>
 
+Set int value based on int type
+
 =cut
 
 */
 
 static void
-set_int(PARROT_INTERP, ARGIN(char *p), int type, INTVAL value)
+set_int(PARROT_INTERP, ARGOUT(char *p), int type, INTVAL value)
 {
     ASSERT_ARGS(set_int)
     switch (type) {
@@ -589,7 +600,7 @@ set_int(PARROT_INTERP, ARGIN(char *p), int type, INTVAL value)
         *(short *)p = (short)value;
         break;
       default:
-        Parrot_ex_throw_from_c_args(interp, NULL, 1,
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_OPERATION,
                 "setting unhandled int type in struct");
         break;
     }
@@ -607,7 +618,7 @@ C<value>.
 */
 
 static void
-set_float(PARROT_INTERP, ARGIN(char *p), int type, FLOATVAL value)
+set_float(PARROT_INTERP, ARGOUT(char *p), int type, FLOATVAL value)
 {
     ASSERT_ARGS(set_float)
     switch (type) {
@@ -621,7 +632,7 @@ set_float(PARROT_INTERP, ARGIN(char *p), int type, FLOATVAL value)
         *(double *)p = (double)value;
         break;
       default:
-        Parrot_ex_throw_from_c_args(interp, NULL, 1,
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_OPERATION,
                 "setting unhandled float type in struct");
         break;
     }
@@ -639,17 +650,17 @@ C<*value>.
 */
 
 static void
-set_string(PARROT_INTERP, ARGIN(char *p), int type, ARGIN(STRING *value))
+set_string(PARROT_INTERP, ARGOUT(char *p), int type, ARGIN(STRING *value))
 {
     ASSERT_ARGS(set_string)
     if (type == enum_type_cstr) {
         /* assuming 0-terminated C-string here;
          * we can't use Parrot_str_to_cstring easily */
-        char *cstr  = (char *)Buffer_bufstart(value);
+        char * const cstr  = (char *)Buffer_bufstart(value);
         *(char **)p = cstr;
     }
     else
-        Parrot_ex_throw_from_c_args(interp, NULL, 1,
+        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_INVALID_OPERATION,
             "setting unhandled string type in struct (%d)", type);
 }
 
@@ -681,17 +692,16 @@ calc_align(PARROT_INTERP, ARGIN(PMC *type_pmc), int type, size_t offs)
     if (type == enum_type_struct || type == enum_type_struct_ptr) {
         /* a nested structs alignment is the biggest item in it
          * so go through that struct and check */
-        nested = VTABLE_getprop(interp, type_pmc, CONST_STRING(interp, "_struct"));
+        nested = Parrot_pmc_getprop(interp, type_pmc, CONST_STRING(interp, "_struct"));
         nested_init = PARROT_UNMANAGEDSTRUCT(nested)->init;
     }
     if (type == enum_type_struct) {
         INTVAL i;
         const INTVAL n = (size_t)VTABLE_elements(interp, nested_init);
         int    a_max   = 0;
-        int    new_offs;
 
         if (n % 3)
-            Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_INVALID_OPERATION,
+            Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_OPERATION,
                     "Illegal initializer for struct");
 
         for (i = 0; i < n; i += 3) {
@@ -699,8 +709,7 @@ calc_align(PARROT_INTERP, ARGIN(PMC *type_pmc), int type, size_t offs)
                     nested_init, i);
             const int nested_type     = (int)VTABLE_get_integer(interp,
                 nested_type_pmc);
-            new_offs             = calc_align(interp,
-                    nested_type_pmc, nested_type, offs);
+            const int new_offs = calc_align(interp, nested_type_pmc, nested_type, offs);
 
             if (new_offs > a_max)
                 a_max = new_offs;
@@ -741,7 +750,7 @@ calc_offsets(PARROT_INTERP, ARGIN(PMC *pmc), ARGIN(PMC *value), size_t toff)
     INTVAL  i;
 
     if (n % 3)
-        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_INVALID_OPERATION,
+        Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_INVALID_OPERATION,
                 "Illegal initializer for struct");
 
     for (i = 0; i < n; i += 3) {
@@ -755,7 +764,7 @@ calc_offsets(PARROT_INTERP, ARGIN(PMC *pmc), ARGIN(PMC *value), size_t toff)
         if (type < enum_first_type || type >= enum_last_type)
             Parrot_ex_throw_from_c_args(interp, NULL,
                 EXCEPTION_INVALID_OPERATION,
-                "Illegal type in initializer for struct");
+                "Illegal type (%d) in initializer for struct", type);
 
         if (count <= 0) {
             count = 1;
@@ -770,15 +779,15 @@ calc_offsets(PARROT_INTERP, ARGIN(PMC *pmc), ARGIN(PMC *value), size_t toff)
             toff = offs;
 
         if (type == enum_type_struct) {
-            PMC * const nested = VTABLE_getprop(interp, type_pmc, _struct);
+            PMC * const nested = Parrot_pmc_getprop(interp, type_pmc, _struct);
             size        = VTABLE_get_integer(interp, nested);
         }
         else if (type == enum_type_struct_ptr) {
-            PMC * const nested = VTABLE_getprop(interp, type_pmc, _struct);
+            PMC * const nested = Parrot_pmc_getprop(interp, type_pmc, _struct);
 
             /* must clone this struct so as not to share its memory */
             if (nested->vtable->base_type == enum_class_ManagedStruct)
-                VTABLE_setprop(interp, type_pmc, _struct,
+                Parrot_pmc_setprop(interp, type_pmc, _struct,
                     VTABLE_clone(interp, nested));
 
             size = data_types[type - enum_first_type].size;
@@ -803,7 +812,7 @@ pmclass UnManagedStruct auto_attrs no_ro {
 
 =back
 
-=head2 Methods
+=head2 Vtable Functions
 
 =over 4
 
@@ -815,15 +824,15 @@ C<*value> should be an array of triples of:
 
 =over 4
 
-=item 0
+=item C<0>
 
 The datatype. See the C<enum> in F<include/parrot/datatypes.h>.
 
-=item 1
+=item C<1>
 
 The count.
 
-=item 2
+=item C<2>
 
 The offset.
 
@@ -833,7 +842,7 @@ The offset.
 
 */
 
-    VTABLE void init_pmc(PMC *value) {
+    VTABLE void init_pmc(PMC *value) :manual_wb {
         SELF.set_pmc(value);
     }
 
@@ -847,10 +856,10 @@ Return a clone of this PMC.
 
 */
 
-    VTABLE PMC *clone() {
+    VTABLE PMC *clone() :no_wb {
         PMC * const clone = Parrot_pmc_new(INTERP, enum_class_UnManagedStruct);
 
-        mem_sys_memmove(PMC_data(clone), PMC_data(SELF),
+        memmove(PMC_data(clone), PMC_data(SELF),
                 sizeof (Parrot_UnManagedStruct_attributes));
         PARROT_UNMANAGEDSTRUCT(clone)->init =
             VTABLE_clone(INTERP, PARROT_UNMANAGEDSTRUCT(SELF)->init);
@@ -883,7 +892,7 @@ Marks the C<struct> as live.
 
 */
 
-    VTABLE void mark() {
+    VTABLE void mark() :no_wb {
         PMC * const init = PARROT_UNMANAGEDSTRUCT(SELF)->init;
         Parrot_gc_mark_PMC_alive(INTERP, init);
     }
@@ -898,12 +907,14 @@ Returns whether the two C<struct>s are equivalent.
 
 */
 
-    VTABLE INTVAL is_equal(PMC *value) {
+    VTABLE INTVAL is_equal(PMC *value) :no_wb {
         return (SELF->vtable   == value->vtable
         &&      SELF.get_pointer() == VTABLE_get_pointer(INTERP, value));
     }
 
 /*
+
+=item C<INTVAL get_bool()>
 
 =item C<INTVAL defined()>
 
@@ -913,7 +924,11 @@ Returns whether the C<struct> is defined.
 
 */
 
-    VTABLE INTVAL defined() {
+    VTABLE INTVAL get_bool() :no_wb {
+        return SELF.get_pointer() != NULL;
+    }
+
+    VTABLE INTVAL defined() :no_wb {
         return SELF.get_pointer() != NULL;
     }
 
@@ -927,7 +942,8 @@ Returns the size of the C<struct>.
 
 */
 
-    VTABLE INTVAL get_integer() {
+    VTABLE INTVAL get_integer() :no_wb {
+        UNUSED(INTERP);
         return PARROT_UNMANAGEDSTRUCT(SELF)->size;
     }
 
@@ -955,7 +971,7 @@ Returns the integer value at index C<ix>.
 
 */
 
-    VTABLE INTVAL get_integer_keyed_int(INTVAL ix) {
+    VTABLE INTVAL get_integer_keyed_int(INTVAL ix) :no_wb {
         int   type;
         const char * const p = char_offset_int(INTERP, SELF, ix, &type);
         return ret_int(INTERP, p, type);
@@ -971,9 +987,9 @@ Returns the integer value associated with C<*key>.
 
 */
 
-    VTABLE INTVAL get_integer_keyed(PMC *key) {
+    VTABLE INTVAL get_integer_keyed(PMC *key) :no_wb {
         int   type;
-        char * const p = char_offset_key(INTERP, SELF, key, &type);
+        const char * const p = char_offset_key(INTERP, SELF, key, &type);
         return ret_int(INTERP, p, type);
     }
 
@@ -987,9 +1003,9 @@ Returns the floating-point value at index C<ix>.
 
 */
 
-    VTABLE FLOATVAL get_number_keyed_int(INTVAL key) {
+    VTABLE FLOATVAL get_number_keyed_int(INTVAL key) :no_wb {
         int   type;
-        char * const p = char_offset_int(INTERP, SELF, key, &type);
+        const char * const p = char_offset_int(INTERP, SELF, key, &type);
         return ret_float(INTERP, p, type);
     }
 
@@ -1003,9 +1019,9 @@ Returns the floating-point value associated with C<*key>.
 
 */
 
-    VTABLE FLOATVAL get_number_keyed(PMC *key) {
+    VTABLE FLOATVAL get_number_keyed(PMC *key) :no_wb {
         int   type;
-        char * const p = char_offset_key(INTERP, SELF, key, &type);
+        const char * const p = char_offset_key(INTERP, SELF, key, &type);
         return ret_float(INTERP, p, type);
     }
 
@@ -1019,7 +1035,7 @@ Returns the Parrot string value at index C<ix>.
 
 */
 
-    VTABLE STRING *get_string_keyed_int(INTVAL key) {
+    VTABLE STRING *get_string_keyed_int(INTVAL key) :no_wb {
         int   type;
         char * const p = char_offset_int(INTERP, SELF, key, &type);
         return ret_string(INTERP, p, type);
@@ -1035,7 +1051,7 @@ Returns the Parrot string value associated with C<*key>.
 
 */
 
-    VTABLE STRING *get_string_keyed(PMC *key) {
+    VTABLE STRING *get_string_keyed(PMC *key) :no_wb {
         int   type;
         char * const p = char_offset_key(INTERP, SELF, key, &type);
         return ret_string(INTERP, p, type);
@@ -1051,7 +1067,7 @@ Returns the PMC value at index C<ix>.
 
 */
 
-    VTABLE PMC *get_pmc_keyed_int(INTVAL key) {
+    VTABLE PMC *get_pmc_keyed_int(INTVAL key) :no_wb {
         int   type;
         char * const p = char_offset_int(INTERP, SELF, key, &type);
         return ret_pmc(INTERP, SELF, p, type, key);
@@ -1067,7 +1083,7 @@ Returns the PMC value associated with C<*key>.
 
 */
 
-    VTABLE PMC *get_pmc_keyed(PMC *key) {
+    VTABLE PMC *get_pmc_keyed(PMC *key) :no_wb {
         int   type;
         char * const p = char_offset_key(INTERP, SELF, key, &type);
         return ret_pmc(INTERP, SELF, p, type, key_2_idx(INTERP, SELF, key));
@@ -1083,7 +1099,8 @@ Returns the pointer to the actual C C<struct>.
 
 */
 
-    VTABLE void *get_pointer() {
+    VTABLE void *get_pointer() :no_wb {
+        UNUSED(INTERP);
         return PARROT_UNMANAGEDSTRUCT(SELF)->ptr;
     }
 
@@ -1197,6 +1214,29 @@ Sets the value of the element associated with key C<*key> to C<*value>.
         int   type;
         char * const p = char_offset_key(INTERP, SELF, key, &type);
         set_string(INTERP, p, type, value);
+    }
+
+/*
+
+=back
+
+=head2 Methods
+
+=over 4
+
+=item C<as_string(string encodingname)>
+
+Create a string from the buffer, assumed to be a C string, with the encoding
+specified. If the encoding is omitted or null, use platform encoding.
+
+=cut
+
+*/
+
+    METHOD as_string(STRING *encodingname :optional) :no_wb {
+        const char * content = (const char *)SELF.get_pointer();
+        STRING * const result = Parrot_str_new_from_cstring(INTERP, content, encodingname);
+        RETURN(STRING result);
     }
 
 }

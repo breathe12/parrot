@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2001-2010, Parrot Foundation.
+Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -24,6 +24,7 @@ value passing to and from subroutines.
 #include "pcc.str"
 #include "pmc/pmc_key.h"
 #include "pmc/pmc_continuation.h"
+#include "pmc/pmc_callcontext.h"
 
 /* HEADERIZER HFILE: include/parrot/call.h */
 
@@ -34,20 +35,18 @@ static int do_run_ops(PARROT_INTERP, ARGIN(PMC *sub_obj))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
-static void Parrot_pcc_add_invocant(PARROT_INTERP,
-    ARGIN(PMC *call_obj),
-    ARGIN(PMC *pmc))
+PARROT_INLINE
+PARROT_WARN_UNUSED_RESULT
+static int is_invokable(PARROT_INTERP, ARGIN(PMC *sub_obj))
         __attribute__nonnull__(1)
-        __attribute__nonnull__(2)
-        __attribute__nonnull__(3);
+        __attribute__nonnull__(2);
 
 #define ASSERT_ARGS_do_run_ops __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(sub_obj))
-#define ASSERT_ARGS_Parrot_pcc_add_invocant __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+#define ASSERT_ARGS_is_invokable __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(call_obj) \
-    , PARROT_ASSERT_ARG(pmc))
+    , PARROT_ASSERT_ARG(sub_obj))
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 /* HEADERIZER END: static */
 
@@ -135,29 +134,6 @@ Parrot_pcc_invoke_sub_from_c_args(PARROT_INTERP, ARGIN(PMC *sub_obj),
     Parrot_pcc_set_signature(interp, CURRENT_CONTEXT(interp), old_call_obj);
 }
 
-
-/*
-
-=item C<static void Parrot_pcc_add_invocant(PARROT_INTERP, PMC *call_obj, PMC
-*pmc)>
-
-Adds the given PMC as an invocant to the given CallContext PMC.  You should
-never have to use this, and it should go away with interp->current_object.
-
-*/
-
-static void
-Parrot_pcc_add_invocant(PARROT_INTERP, ARGIN(PMC *call_obj), ARGIN(PMC *pmc))
-{
-    ASSERT_ARGS(Parrot_pcc_add_invocant)
-    PMC *arg_flags;
-    GETATTR_CallContext_arg_flags(interp, call_obj, arg_flags);
-
-    VTABLE_unshift_integer(interp, arg_flags,
-          PARROT_ARG_PMC | PARROT_ARG_INVOCANT);
-          VTABLE_unshift_pmc(interp, call_obj, pmc);
-}
-
 /*
 
 =item C<void Parrot_pcc_invoke_method_from_c_args(PARROT_INTERP, PMC* pmc,
@@ -185,6 +161,7 @@ Parrot_pcc_invoke_method_from_c_args(PARROT_INTERP, ARGIN(PMC* pmc),
     PMC        *sub_obj;
     va_list     args;
     const char *arg_sig, *ret_sig;
+    PMC        *arg_flags;
     PMC        * const old_call_obj =
         Parrot_pcc_get_signature(interp, CURRENT_CONTEXT(interp));
 
@@ -192,14 +169,18 @@ Parrot_pcc_invoke_method_from_c_args(PARROT_INTERP, ARGIN(PMC* pmc),
 
     va_start(args, signature);
     call_obj = Parrot_pcc_build_call_from_varargs(interp, PMCNULL, arg_sig, &args);
-    Parrot_pcc_add_invocant(interp, call_obj, pmc);
+
+    /* inlined version of pcc_add_invocant */
+    arg_flags = PARROT_CALLCONTEXT(call_obj)->arg_flags;
+    VTABLE_unshift_integer(interp, arg_flags, PARROT_ARG_PMC | PARROT_ARG_INVOCANT);
+    Parrot_CallContext_unshift_pmc(interp, call_obj, pmc);
 
     Parrot_pcc_set_signature(interp, CURRENT_CONTEXT(interp), call_obj);
 
     /* Find the subroutine object as a named method on pmc */
     sub_obj = VTABLE_find_method(interp, pmc, method_name);
 
-    if (PMC_IS_NULL(sub_obj))
+    if (UNLIKELY(PMC_IS_NULL(sub_obj)))
         Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_METHOD_NOT_FOUND,
             "Method '%Ss' not found", method_name);
 
@@ -224,9 +205,12 @@ Check if the PMC is a Sub or does invokable. Helper for do_run_ops.
 */
 
 PARROT_INLINE
+PARROT_WARN_UNUSED_RESULT
 static int
-is_invokable(PARROT_INTERP, ARGIN(PMC*sub_obj)) /* HEADERIZER SKIP */
+is_invokable(PARROT_INTERP, ARGIN(PMC *sub_obj))
 {
+    ASSERT_ARGS(is_invokable)
+
     if (VTABLE_isa(interp, sub_obj, CONST_STRING(interp, "Sub")))
         return 1;
     else
@@ -254,7 +238,7 @@ do_run_ops(PARROT_INTERP, ARGIN(PMC *sub_obj))
         switch (sub_obj->vtable->base_type) {
           case enum_class_Sub:
           case enum_class_MultiSub:
-          case enum_class_Eval:
+          case enum_class_Continuation:
             return 1;
           case enum_class_Object:
             break;
@@ -302,14 +286,14 @@ Parrot_pcc_invoke_from_sig_object(PARROT_INTERP, ARGIN(PMC *sub_obj),
     ASSERT_ARGS(Parrot_pcc_invoke_from_sig_object)
 
     opcode_t    *dest;
-    UINTVAL      n_regs_used[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-    PMC         *ctx  = Parrot_push_context(interp, n_regs_used);
-    PMC * const  ret_cont = pmc_new(interp, enum_class_Continuation);
+    PMC * const  ret_cont = Parrot_pmc_new(interp, enum_class_Continuation);
+    if (UNLIKELY(PMC_IS_NULL(call_object)))
+        call_object = Parrot_pmc_new(interp, enum_class_CallContext);
 
-    Parrot_pcc_set_signature(interp, ctx, call_object);
-    Parrot_pcc_set_continuation(interp, ctx, ret_cont);
-    interp->current_cont                    = NEED_CONTINUATION;
-    PARROT_CONTINUATION(ret_cont)->from_ctx = ctx;
+    Parrot_pcc_set_signature(interp, CURRENT_CONTEXT(interp), call_object);
+    PARROT_CONTINUATION(ret_cont)->from_ctx = call_object;
+    Parrot_pcc_set_continuation(interp, call_object, ret_cont);
+    interp->current_cont                    = ret_cont;
 
     /* Invoke the function */
     dest = VTABLE_invoke(interp, sub_obj, NULL);
@@ -317,15 +301,32 @@ Parrot_pcc_invoke_from_sig_object(PARROT_INTERP, ARGIN(PMC *sub_obj),
     /* PIR Subs need runops to run their opcodes. Methods and NCI subs
      * don't. */
     if (dest && do_run_ops(interp, sub_obj)) {
-        Parrot_runcore_t *old_core = interp->run_core;
+        Parrot_runcore_t * const old_core = interp->run_core;
         const opcode_t offset = dest - interp->code->base.data;
 
         runops(interp, offset);
         Interp_core_SET(interp, old_core);
     }
-    Parrot_pop_context(interp);
-    Parrot_pcc_set_signature(interp, CURRENT_CONTEXT(interp),
-            Parrot_pcc_get_signature(interp, ctx));
+}
+
+/*
+
+=item C<PMC * Parrot_pcc_new_call_object(PARROT_INTERP)>
+
+Returns a new CallContext object, suitable for making a Sub call.
+
+=cut
+
+*/
+
+PARROT_EXPORT
+PARROT_CANNOT_RETURN_NULL
+PARROT_WARN_UNUSED_RESULT
+PMC *
+Parrot_pcc_new_call_object(PARROT_INTERP)
+{
+    ASSERT_ARGS(Parrot_pcc_new_call_object)
+    return Parrot_pmc_new(interp, enum_class_CallContext);
 }
 
 /*

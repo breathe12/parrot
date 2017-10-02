@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2006, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -6,7 +6,12 @@ examples/benchmarks/bench_new.pasm - PMC Creation
 
 =head1 SYNOPSIS
 
-    % time ./parrot examples/benchmarks/bench_new.pasm
+    % time ./parrot examples/benchmarks/bench_newp.pasm
+
+    % ltrace -crT ./parrot examples/benchmarks/bench_newp.pasm
+
+    % valgrind --tool=callgrind ./parrot examples/benchmarks/bench_newp.pasm
+    % callgrind_annotate `ls -rt callgrind.out.*|tail -n1`
 
 =head1 DESCRIPTION
 
@@ -33,6 +38,7 @@ prints out some statistics indicating:
 
 =cut
 
+.pcc_sub :main main:
 	set I2, 1000
 	set I3, 1000
 	set I0, I2

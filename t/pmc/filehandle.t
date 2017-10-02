@@ -1,13 +1,12 @@
 #!perl
-# Copyright (C) 2006-2010, Parrot Foundation.
+# Copyright (C) 2006-2014, Parrot Foundation.
 
 use strict;
 use warnings;
 use lib qw( . lib ../lib ../../lib );
 
 use Test::More;
-use Parrot::Test tests => 24;
-use Parrot::Test::Util 'create_tempfile';
+use Parrot::Test tests => 35;
 use Parrot::Test::Util 'create_tempfile';
 
 =head1 NAME
@@ -41,7 +40,7 @@ pir_output_is( <<"CODE", <<'OUT', 'open and close - synchronous' );
 .sub 'test' :main
     .local int i
     \$P1 = new ['FileHandle']
-    \$P1.'open'('README')
+    \$P1.'open'('README.pod')
     say 'ok 1 - \$P1.open(\$S1)'
 
     \$P1.'close'()
@@ -128,19 +127,42 @@ pir_output_is( <<'CODE', <<'OUT', 'wrong open' );
 
     i = 0
     set_label eh, catchreopen
-    fh.'open'('README')
+    fh.'open'('README.pod')
     i = 1
     # Open already opened
-    fh.'open'('README')
+    fh.'open'('README.pod')
     i = 0
     goto reportreopen
   catchreopen:
     finalize eh
   reportreopen:
     say i
+
+    i = 0
+    set_label eh, catchother
+    fh.'open'('noREADME.pod')
+    goto reportother
+  catchother:
+    i = 1
+    finalize eh
+  reportother:
+    say i
+
+    i = 0
+    set_label eh, catchdir
+    fh.'open'('t')
+    goto reportdir
+  catchdir:
+    i = 1
+    finalize eh
+  reportdir:
+    say i
+
     pop_eh
 .end
 CODE
+1
+1
 1
 1
 OUT
@@ -153,7 +175,7 @@ pir_output_is( <<'CODE', <<'OUT', 'isatty' );
     i = fh.'isatty'()
     print i
     say ' unopened FileHandle is not a tty'
-    fh.'open'('README')
+    fh.'open'('README.pod')
     i = fh.'isatty'()
     print i
     say ' regular file is not a tty'
@@ -164,20 +186,20 @@ CODE
 OUT
 
 SKIP: {
-    skip 'no asynch calls yet' => 1;
+    skip 'no async calls yet' => 1;
 
     pir_output_is( <<'CODE', <<'OUT', 'open and close - asynchronous' );
 .sub 'test' :main
-    $P1 = # TT #1204 create a callback here
+    $P1 = # GH #535 create a callback here
     $P0 = new ['FileHandle']
 
-    $P0.'open'('README')
+    $P0.'open'('README.pod')
     say 'ok 1 - $P0.open($S1)'
 
     $P0.'close'()
     say 'ok 2 - $P0.close($P1)'
 
-    $P0.'open'('README', 'rw')
+    $P0.'open'('README.pod', 'rw')
     say 'ok 3 - $P0.open($S1, $S2)'
 
     $P0.'close'()
@@ -200,16 +222,17 @@ pir_output_is(
     <<'CODE', <<'OUT', 'read - synchronous' );
 .sub 'test' :main
     $P0 = new ['FileHandle']
-    $P0.'open'('README')
+    $P0.'open'('README.pod')
 
-    $S0 = $P0.'read'(14) # bytes
-    if $S0 == 'This is Parrot' goto ok_1
+    $S0 = $P0.'read'(15) # bytes
+    if $S0 == '# Copyright (C)' goto ok_1
     print 'not '
   ok_1:
     say 'ok 1 - $S0 = $P1.read($I2)'
 
-    $S0 = $P0.'read'(9)  # bytes
-    if $S0 == ', version' goto ok_2
+    $S0 = $P0.'read'(12)  # throw away bytes
+    $S0 = $P0.'read'(17)  # bytes
+    if $S0 == 'Parrot Foundation' goto ok_2
     print 'not '
   ok_2:
     say 'ok 2 - $S0 = $P1.read($I2) # again on same stream'
@@ -217,6 +240,34 @@ pir_output_is(
 CODE
 ok 1 - $S0 = $P1.read($I2)
 ok 2 - $S0 = $P1.read($I2) # again on same stream
+OUT
+
+pir_output_is(
+    <<'CODE', <<'OUT', 'read_bytes - synchronous' );
+.sub 'test' :main
+    .local pmc fh, bb
+
+    fh = new ['FileHandle']
+    fh.'open'('README.pod')
+
+    bb = fh.'read_bytes'(15)
+    $S0 = bb.'get_string'('ascii')
+    if $S0 == '# Copyright (C)' goto ok_1
+    print 'not '
+  ok_1:
+    say 'ok 1 - read_bytes'
+
+    bb = fh.'read_bytes'(12)  # throw away bytes
+    bb = fh.'read_bytes'(17)  # bytes
+    $S0 = bb.'get_string'('utf8')
+    if $S0 == 'Parrot Foundation' goto ok_2
+    print 'not '
+  ok_2:
+    say 'ok 2 - read_bytes # again on same stream'
+.end
+CODE
+ok 1 - read_bytes
+ok 2 - read_bytes # again on same stream
 OUT
 
 # L<PDD22/I\/O PMC API/=item print>
@@ -358,44 +409,77 @@ ok 1 - read 10,000 lines
 OUT
 
 
-# TT #1204 test reading long chunks, eof, and across newlines
+# GH #535 test reading long chunks, eof, and across newlines
 
-# TT #1204 pir_output_is( <<'CODE', <<'OUT', 'print, read, and readline - asynchronous', todo => 'not yet implemented' );
+# GH #535 pir_output_is( <<'CODE', <<'OUT', 'print, read, and readline - asynchronous', todo => 'not yet implemented' );
 
 # L<PDD22/I\/O PMC API/=item record_separator>
-pir_output_is( <<'CODE', <<'OUT', 'record_separator', todo => 'not yet implemented' );
+pir_output_is( <<"CODE", <<'OUT', 'record_separator' );
 .sub 'test' :main
-    $P0 = new ['FileHandle']
+    \$P0 = new ['FileHandle']
+    \$P0.'open'('$temp_file', 'rw')
 
-    $S0 = $P0.'record_separator'()
-    if $S0 == "\n" goto ok_1
+    \$S0 = \$P0.'record_separator'()
+    if \$S0 == "\\n" goto ok_1
     print 'not '
   ok_1:
-    say 'ok 1 - $S0 = $P1.record_separator() # default'
+    say 'ok 1 - \$S0 = \$P1.record_separator() # default'
 
-    $S99 = 'abc'
-    $P0.'record_separator'($S99)
-    $S0 = $P0.'record_separator'()
-    if $S0 == $S99 goto ok_2
+    \$S99 = 'a'
+    \$P0.'record_separator'(\$S99)
+    \$S0 = \$P0.'record_separator'()
+    if \$S0 == \$S99 goto ok_2
     print 'not '
   ok_2:
-    say 'ok 2 - $P0.record_separator($S1)'
+    say 'ok 2 - \$P0.record_separator("a")'
 
-    $P0.'print'(123)
-    $S0 = $P0.'record_separator'()
-    $P0.'print'($S0)
-    $P0.'print'(456)
+    \$P0.'print'(123)
+    \$S0 = \$P0.'record_separator'()
+    \$P0.'print'(\$S0)
+    \$P0.'print'(456)
 
-    $S0 = $P0.'readline'()
-    if $S0 == '123abc' goto ok_3
+    \$P0.'seek'(0, 0)
+    \$S0 = \$P0.'readline'()
+    if \$S0 == '123a' goto ok_3
     print 'not '
   ok_3:
-    say 'ok 3 - $P0.record_separator() # .readline works as expected'
+    say 'ok 3 - \$P0.record_separator() # .readline works as expected'
 .end
 CODE
 ok 1 - $S0 = $P1.record_separator() # default
-ok 2 - $P0.record_separator($S1)
+ok 2 - $P0.record_separator("a")
 ok 3 - $P0.record_separator() # .readline works as expected
+OUT
+
+# L<PDD22/I\/O PMC API/=item record_separator>
+pir_output_is( <<"CODE", <<'OUT', 'record_separator, multiple chars' );
+.sub 'test' :main
+    \$P0 = new ['FileHandle']
+
+    \$S99 = 'abc'
+    \$P0.'record_separator'(\$S99)
+    \$S0 = \$P0.'record_separator'()
+    if \$S0 == \$S99 goto ok_2
+    print 'not '
+  ok_2:
+    say 'ok 1 - \$P0.record_separator("abc")'
+
+    \$P0.'open'('$temp_file', 'rw')
+    \$P0.'print'(123)
+    \$S0 = \$P0.'record_separator'()
+    \$P0.'print'(\$S0)
+    \$P0.'print'(456)
+
+    \$P0.'seek'(0, 0)
+    \$S0 = \$P0.'readline'()
+    if \$S0 == '123abc' goto ok_3
+    print 'not '
+  ok_3:
+    say 'ok 2 - \$P0.record_separator() # .readline works as expected'
+.end
+CODE
+ok 1 - $P0.record_separator("abc")
+ok 2 - $P0.record_separator() # .readline works as expected
 OUT
 
 # L<PDD22/I\/O PMC API/=item buffer_type>
@@ -431,9 +515,9 @@ ok 2 - $S0 = $P1.buffer_type() # line-buffered
 ok 3 - $S0 = $P1.buffer_type() # full-buffered
 OUT
 
-# TT #1204 test effects of buffer_type, not just set/get
+# GH #535 test effects of buffer_type, not just set/get
 
-# TT #1177
+# GH #458
 # L<PDD22/I\/O PMC API/=item buffer_size>
 # NOTES: try setting positive, zero, negative int
 # perform print and read ops
@@ -561,7 +645,7 @@ pir_output_is( <<'CODE', <<'OUT', 'mode' );
 .sub 'test' :main
     $P0 = new ['FileHandle']
 
-    $P0.'open'('README')
+    $P0.'open'('README.pod')
     $S0 = $P0.'mode'()
 
     if $S0 == 'r' goto ok_1
@@ -575,6 +659,33 @@ pir_output_is( <<'CODE', <<'OUT', 'mode' );
 CODE
 ok 1 - $S0 = $P0.mode() # get read mode
 OUT
+
+pir_output_is( <<'CODE', <<'OUTPUT', "clone preserves all attributes of filehandle" );
+.sub main :main
+    .local pmc fh,fh_clone
+    .local string line1, line2
+
+    fh = new ['FileHandle']
+    fh.'open'('README.pod')
+
+    line1 = fh.'readline'()
+
+    fh_clone = clone fh
+    line2 = fh_clone.'readline'()
+
+    $I0 = line1 == line2
+    say $I0
+
+    fh_clone.'seek'(0, 0)
+    line2 = fh_clone.'readline'()
+
+    $I0 = line1 == line2
+    say $I0
+.end
+CODE
+0
+1
+OUTPUT
 
 pir_output_is( <<"CODE", <<"OUTPUT", "readall - closed filehandle" );
 .sub main :main
@@ -624,6 +735,38 @@ CODE
 ok
 OUTPUT
 
+
+pir_output_is( <<"CODE", <<"OUTPUT", "readall() - at eof GH #981" );
+.sub main :main
+    \$S0 = <<"EOS"
+line 1
+line 2
+line 3
+EOS
+    .local pmc pio, pio2
+    pio = new ['FileHandle']
+    pio.'open'("$temp_file", "w")
+    pio.'print'(\$S0)
+    pio.'close'()
+
+    pio2 = new ['FileHandle']
+    pio2.'open'("$temp_file", "r")
+    \$S1 = pio2.'readall'()
+    if \$S0 == \$S1 goto ok
+    print "not "
+ok:
+    say "ok"
+    \$S1 = pio2.'readall'()
+    if \$S1 == '' goto ok2
+    print "not "
+ok2:
+    say "ok"
+.end
+CODE
+ok
+ok
+OUTPUT
+
 pir_output_is( <<'CODE', <<'OUTPUT', "readall - failure conditions" );
 .include 'except_types.pasm'
 .sub main :main
@@ -642,9 +785,9 @@ pir_output_is( <<'CODE', <<'OUTPUT', "readall - failure conditions" );
     say 'caught unopened'
   test2:
     set_label eh, catch2
-    fh.'open'('README')
+    fh.'open'('README.pod')
     # Using opened FileHandle with the filepath option
-    fh.'readall'('README')
+    fh.'readall'('README.pod')
     say 'should never happen'
     goto end
   catch2:
@@ -658,7 +801,7 @@ caught reopen
 OUTPUT
 
 pir_output_is( <<"CODE", <<"OUTPUT", "readall() - utf8 on closed filehandle" );
-.sub 'main'
+.sub 'main' :main
     .local pmc ifh
     ifh = new ['FileHandle']
     ifh.'encoding'('utf8')
@@ -675,7 +818,7 @@ utf8
 OUTPUT
 
 pir_output_is( <<"CODE", <<"OUTPUT", "readall() - utf8 on opened filehandle" );
-.sub 'main'
+.sub 'main' :main
     .local pmc ifh
     ifh = new ['FileHandle']
     ifh.'encoding'('utf8')
@@ -692,24 +835,31 @@ CODE
 utf8
 OUTPUT
 
-pir_output_is( <<'CODE', <<"OUTPUT", "exit status" );
+SKIP: {
+    skip "with darwin valgrind", 1 if $ENV{VALGRIND} and $^O eq 'darwin';
+    # UNKNOWN task message [id 3403, to mach_task_self(), reply 0x813]
+
+    pir_output_is( <<'CODE', <<"OUTPUT", "exit status" );
 .include 'iglobals.pasm'
-.sub 'main'
+.sub 'main' :main
     .local pmc pipe, conf, interp
     .local string cmd
 
     interp = getinterp
     conf = interp[.IGLOBALS_CONFIG_HASH]
 
-    cmd = conf['build_dir']
+    cmd = '"'
 
     .local string aux
+    aux = conf['build_dir']
+    cmd .= aux
     aux = conf['slash']
     cmd .= aux
     aux = conf['test_prog']
     cmd .= aux
     aux = conf['exe']
     cmd .= aux
+    cmd .= '"'
 
     pipe = new ['FileHandle']
     pipe.'open'(cmd, "rp")
@@ -735,8 +885,10 @@ expect 0 exit status: 0
 expect 1 exit status: 1
 OUTPUT
 
+}
+
 SKIP: {
-    skip 'Timely destruction is deprecated. TT#1800' => 1;
+    skip 'Timely destruction is deprecated. GH #278' => 1;
 
 pir_output_is( sprintf(<<'CODE', $temp_file), <<'OUTPUT', "timely destruction" );
 .const string temp_file = '%s'
@@ -765,7 +917,7 @@ OUTPUT
 
 }
 
-my (undef, $no_such_file) = create_tempfile( UNLINK => 1, OPEN => 0 );
+my (undef, $no_such_file) = create_tempfile( UNLINK => 0, OPEN => 0 );
 
 pir_output_is( sprintf( <<'CODE', $no_such_file, $temp_file ), <<'OUTPUT', "get_bool" );
 .const string no_such_file = '%s'
@@ -835,7 +987,219 @@ CODE
 -1
 OUT
 
-# TT #1178
+pir_output_is( <<"CODE", <<'OUT', 'write after buffered read' );
+.sub test :main
+    .local pmc fh
+    .local string str
+    .local int pos
+
+    fh = new 'FileHandle'
+    fh.'open'('$temp_file', 'rw')
+
+    fh.'print'('abcdefghijklmno')
+    fh.'seek'(0, 0)
+
+    fh.'read'(5)
+    fh.'print'('#####')
+
+    pos = fh.'tell'()
+    say pos
+
+    fh.'seek'(0, 0)
+    str = fh.'readall'()
+    say str
+
+    fh.'close'()
+.end
+CODE
+10
+abcde#####klmno
+OUT
+
+pir_output_is( <<"CODE", <<'OUT', 'small reads and seeks' );
+.sub test :main
+    .local pmc fh
+    .local string str
+    .local int pos, i
+
+    fh = new 'FileHandle'
+    fh.'open'('$temp_file', 'rw')
+
+    i = 0
+  print_loop:
+    fh.'print'('abc123')
+    inc i
+    if i < 5000 goto print_loop
+
+    fh.'seek'(1, -24000)
+
+    i = 0
+  read_loop:
+    str = fh.'read'(3)
+    if str == 'abc' goto read_ok
+    print 'not '
+    goto read_done
+  read_ok:
+    fh.'seek'(1, 3)
+    inc i
+    if i < 4000 goto read_loop
+  read_done:
+    say 'ok 1 - read/seek 3 bytes'
+
+    str = fh.'read'(3)
+    if str == '' goto eof_ok
+    print 'not '
+  eof_ok:
+    say 'ok 2 - read/seek eof'
+
+    pos = fh.'tell'()
+    if pos == 30000 goto tell_ok
+    print 'not '
+  tell_ok:
+    say 'ok 3 - read/seek tell'
+
+    fh.'close'()
+.end
+CODE
+ok 1 - read/seek 3 bytes
+ok 2 - read/seek eof
+ok 3 - read/seek tell
+OUT
+
+# The code path we want to test here is a bit hard to trigger
+pir_output_is( <<"CODE", <<'OUT', 'partial multibyte char in buffer' );
+.sub test :main
+    .local pmc fh
+    .local string str, line
+    .local int pos, i
+
+    fh = new 'FileHandle'
+    fh.'open'('$temp_file', 'rw')
+
+    # set a buffer size of 6000 and utf8 encoding
+    fh.'buffer_size'(6000)
+    fh.'encoding'('utf8')
+
+    # write 599 lines, 5990 bytes
+    i = 0
+  print_loop:
+    fh.'print'("123456789\\n")
+    inc i
+    if i < 599 goto print_loop
+
+    # now write a final line with a utf8 character that will be split
+    # across buffers
+    line = utf8:"123456789\\x{2022}"
+    fh.'print'(line)
+
+    str = read_600_lines(fh)
+    i = iseq str, line
+    say i
+
+    str = fh.'readline'()
+    i = length str
+    say i
+
+    # test it again with a different setting
+
+    fh.'seek'(1, -12)
+    line = utf8:"12345678\\x{2022}#############\\n"
+    fh.'print'(line)
+    fh.'print'("####\\n###########\\n")
+
+    str = read_600_lines(fh)
+    i = iseq str, line
+    say i
+
+    fh.'close'()
+.end
+
+.sub read_600_lines
+    .param pmc fh
+    .local int i
+    .local string str
+
+    fh.'seek'(0, 0)
+
+    i = 0
+  read_loop:
+    str = fh.'readline'()
+    inc i
+    if i < 600 goto read_loop
+
+    .return (str)
+.end
+CODE
+1
+0
+1
+OUT
+
+pir_output_is( <<'CODE', "This is a\n", ".write_bytes" );
+.const string temp_file = '%s'
+.sub main :main
+    $P0 = getinterp
+    $P1 = $P0.'stdout_handle'()
+
+    $P2 = new ['ByteBuffer']
+    $P2 = "This is a test"
+    $P1.'write_bytes'($P2, 9)
+    print "\n"
+.end
+
+CODE
+
+pir_output_is( <<'CODE', <<'OUTPUT', ".read_bytes" );
+.const string temp_file = '%s'
+.sub main :main
+    $P0 = new ['FileHandle']
+    $P0.'open'('README.pod')
+
+    $P1 = $P0.'read_bytes'(15) # bytes
+    $S0 = $P1.'get_string_as'('ascii')
+    say $S0
+.end
+
+CODE
+# Copyright (C)
+OUTPUT
+
+pir_output_is( <<'CODE', <<'OUTPUT', 'No null byte in .readall after readline' );
+.sub main :main
+    $P0 = new ['FileHandle']
+    $P0.'open'('README.pod')
+    $P0.'readline'()
+    $S0 = $P0.'readall'()
+    $I0 = index $S0, "\0"
+    say $I0
+.end
+CODE
+-1
+OUTPUT
+
+{
+my $code = <<'CODE';
+.sub main :main
+    $P0 = new ['Env']
+    $P0['AAAA'] = 'ZZZZZZ'
+    $P1 = new ['FileHandle']
+    $P1.'open'("echo $AAAA", "wp")
+    $P1.'close'()
+.end
+CODE
+$code =~ s|echo \$AAAA|cmd /c echo %AAAA%| if $^O eq 'MSWin32';
+
+SKIP: {
+    skip "with darwin valgrind", 1 if $ENV{VALGRIND} and $^O eq 'darwin';
+    # UNKNOWN task message [id 3403, to mach_task_self(), reply 0x813]
+
+    pir_output_is( $code, <<'OUTPUT', 'openpipe uses Env GH #1065' );
+ZZZZZZ
+OUTPUT
+    }
+}
+
+# GH #465
 # L<PDD22/I\/O PMC API/=item get_fd>
 # NOTES: this is going to be platform dependent
 

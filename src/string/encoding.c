@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2004-2010, Parrot Foundation.
+Copyright (C) 2004-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -16,20 +16,42 @@ These are parrot's generic encoding handling functions
 */
 
 #include "parrot/encoding.h"
+#include "parrot/namealias.h"
+#if PARROT_HAS_ICU
+#  include <unicode/uchar.h>
+#endif
+#include "encoding.str"
 
-STR_VTABLE *Parrot_default_encoding_ptr = NULL;
+STR_VTABLE *Parrot_default_encoding_ptr  = NULL;
+STR_VTABLE *Parrot_platform_encoding_ptr = NULL;
 
 static STR_VTABLE **encodings;
-static int          n_encodings;
+static int          n_encodings = 0;
+static STRING      *platform_str;
 /* for backwards compatibility */
 static STRING      *unicode_str;
 static STRING      *fixed_8_str;
+
+#define ENC_NAME_PLATFORM "platform"
+#define ENC_NAME_UNICODE  "unicode"
+#define ENC_NAME_FIXED8   "fixed_8"
 
 /* HEADERIZER HFILE: include/parrot/encoding.h */
 
 /* HEADERIZER BEGIN: static */
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 
+PARROT_PURE_FUNCTION
+PARROT_WARN_UNUSED_RESULT
+PARROT_CAN_RETURN_NULL
+static const STR_VTABLE * find_encoding(PARROT_INTERP,
+    ARGIN(const STRING *encodingname))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2);
+
+#define ASSERT_ARGS_find_encoding __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(encodingname))
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 /* HEADERIZER END: static */
 
@@ -76,10 +98,48 @@ Parrot_new_encoding(PARROT_INTERP)
 
 /*
 
+=item C<static const STR_VTABLE * find_encoding(PARROT_INTERP, const STRING
+*encodingname)>
+
+Finds an encoding with the STRING name C<encodingname>. Returns the encoding
+if it is successfully found, returns NULL otherwise.
+
+=cut
+
+*/
+PARROT_PURE_FUNCTION
+PARROT_WARN_UNUSED_RESULT
+PARROT_CAN_RETURN_NULL
+static const STR_VTABLE *
+find_encoding(PARROT_INTERP, ARGIN(const STRING *encodingname))
+{
+    ASSERT_ARGS(find_encoding)
+    const int n = n_encodings;
+    int i;
+
+    for (i = 0; i < n; ++i)
+        if (STRING_equal(interp, encodings[i]->name_str, encodingname))
+            return encodings[i];
+
+    /* backwards compatibility */
+    if (STRING_equal(interp, encodingname, unicode_str))
+        return Parrot_utf8_encoding_ptr;
+
+    if (STRING_equal(interp, encodingname, platform_str))
+        return Parrot_platform_encoding_ptr;
+
+    if (STRING_equal(interp, encodingname, fixed_8_str))
+        return Parrot_ascii_encoding_ptr;
+
+    return NULL;
+}
+
+/*
+
 =item C<const STR_VTABLE * Parrot_find_encoding(PARROT_INTERP, const char
 *encodingname)>
 
-Finds an encoding with the name C<encodingname>. Returns the encoding
+Finds an encoding with the C string name C<encodingname>. Returns the encoding
 if it is successfully found, returns NULL otherwise.
 
 =cut
@@ -102,11 +162,52 @@ Parrot_find_encoding(SHIM_INTERP, ARGIN(const char *encodingname))
             return encodings[i];
 
     /* backwards compatibility */
-    if (strcmp(encodingname, "unicode") == 0)
+    if (strcmp(encodingname, ENC_NAME_UNICODE) == 0)
         return Parrot_utf8_encoding_ptr;
+
+    if (strcmp(encodingname, ENC_NAME_PLATFORM) == 0)
+        return Parrot_platform_encoding_ptr;
+
+    if (strcmp(encodingname, ENC_NAME_FIXED8) == 0)
+        return Parrot_ascii_encoding_ptr;
 
     return NULL;
 }
+
+
+/*
+
+=item C<const STR_VTABLE * Parrot_find_encoding_by_string(PARROT_INTERP, STRING
+*encodingname)>
+
+Finds an encoding with the STRING name C<encodingname>. Returns the encoding
+if it is successfully found, throws an exception otherwise. Returns the
+default encoding for the NULL string.
+
+=cut
+
+*/
+
+PARROT_EXPORT
+PARROT_PURE_FUNCTION
+PARROT_WARN_UNUSED_RESULT
+PARROT_CAN_RETURN_NULL
+const STR_VTABLE *
+Parrot_find_encoding_by_string(PARROT_INTERP, ARGIN(STRING *encodingname))
+{
+    ASSERT_ARGS(Parrot_find_encoding_by_string)
+
+    if (STRING_IS_NULL(encodingname))
+        return Parrot_default_encoding_ptr;
+    else {
+        const STR_VTABLE * const result = find_encoding(interp, encodingname);
+        if (result)
+            return result;
+    }
+    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_INVALID_ENCODING,
+            "invalid encoding '%Ss'", encodingname);
+}
+
 
 /*
 
@@ -132,11 +233,10 @@ PARROT_EXPORT
 PARROT_DOES_NOT_RETURN
 PARROT_CANNOT_RETURN_NULL
 const STR_VTABLE *
-Parrot_load_encoding(PARROT_INTERP, ARGIN(const char *encodingname))
+Parrot_load_encoding(PARROT_INTERP, SHIM(const char *encodingname))
 {
     ASSERT_ARGS(Parrot_load_encoding)
-    UNUSED(encodingname);
-    Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_UNIMPLEMENTED,
+    Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_UNIMPLEMENTED,
         "Can't load encodings yet");
 }
 
@@ -158,29 +258,8 @@ INTVAL
 Parrot_encoding_number(PARROT_INTERP, ARGIN(const STRING *encodingname))
 {
     ASSERT_ARGS(Parrot_encoding_number)
-    const int n = n_encodings;
-    int i;
-
-    for (i = 0; i < n; ++i) {
-        if (STRING_equal(interp, encodings[i]->name_str, encodingname))
-            return i;
-    }
-
-    /* backwards compatibility */
-    if (STRING_equal(interp, encodingname, unicode_str)) {
-        for (i = 0; i < n; ++i) {
-            if (STREQ(encodings[i]->name, "utf8"))
-                return i;
-        }
-    }
-    else if (STRING_equal(interp, encodingname, fixed_8_str)) {
-        for (i = 0; i < n; ++i) {
-            if (STREQ(encodings[i]->name, "ascii"))
-                return i;
-        }
-    }
-
-    return -1;
+    const STR_VTABLE * const result = find_encoding(interp, encodingname);
+    return result ? result->num : -1;
 }
 
 /*
@@ -305,8 +384,10 @@ Parrot_str_internal_register_encoding_names(PARROT_INTERP)
     for (n = 0; n < n_encodings; ++n)
         encodings[n]->name_str =
             Parrot_str_new_constant(interp, encodings[n]->name);
-    unicode_str = Parrot_str_new_constant(interp, "unicode");
-    fixed_8_str = Parrot_str_new_constant(interp, "fixed_8");
+    /* Can't use CONST_STRING here, not setup yet */
+    unicode_str  = Parrot_str_new_constant(interp, ENC_NAME_UNICODE);
+    fixed_8_str  = Parrot_str_new_constant(interp, ENC_NAME_FIXED8);
+    platform_str = Parrot_str_new_constant(interp, ENC_NAME_PLATFORM);
 }
 
 /*
@@ -371,6 +452,7 @@ Parrot_encodings_init(PARROT_INTERP)
     Parrot_register_encoding(interp, Parrot_ucs4_encoding_ptr);
 
     Parrot_default_encoding_ptr = Parrot_ascii_encoding_ptr;
+    Parrot_init_platform_encoding(interp);
 
     /* Now that the plugins are registered, we can create STRING
      * names for them.  */
@@ -390,7 +472,7 @@ Sets the default encoding to C<encoding> with name C<encodingname>.
 
 PARROT_EXPORT
 INTVAL
-Parrot_make_default_encoding(SHIM_INTERP, SHIM(const char *encodingname),
+Parrot_make_default_encoding(SHIM_INTERP, ARGIN(SHIM(const char *encodingname)),
         ARGIN(STR_VTABLE *encoding))
 {
     ASSERT_ARGS(Parrot_make_default_encoding)
@@ -419,6 +501,58 @@ Parrot_default_encoding(SHIM_INTERP)
     return Parrot_default_encoding_ptr;
 }
 
+/*
+
+=item C<INTVAL Parrot_str_internal_find_codepoint(PARROT_INTERP, const STRING
+*name)>
+
+Helper function for string.ops in the ICU and non-ICU variant.
+
+At first search for ICU names.
+This will not find name aliases for control characters starting with ICU 5.2.
+U_CHAR_NAME_ALIAS started with ICU 4.4,
+U_UNICODE_10_CHAR_NAME (the "old name" like "LINE FEED") was deprecated with ICU 4.9,
+but U_CHAR_NAME_CHOICE_COUNT is stable since 2.0.
+
+=cut
+
+*/
+
+PARROT_PURE_FUNCTION
+PARROT_WARN_UNUSED_RESULT
+INTVAL
+Parrot_str_internal_find_codepoint(PARROT_INTERP, ARGIN(const STRING *name))
+{
+    ASSERT_ARGS(Parrot_str_internal_find_codepoint)
+    INTVAL retval = -1;
+    char * const cstr      = Parrot_str_to_cstring(interp, name);
+#if PARROT_HAS_ICU
+    UErrorCode   err       = U_ZERO_ERROR;
+    unsigned int i = 0;
+    for (; i < U_CHAR_NAME_CHOICE_COUNT; i++) {
+        UChar32 codepoint = u_charFromName((UCharNameChoice)i, cstr, &err);
+        if (U_SUCCESS(err)) {
+            retval = (INTVAL) codepoint;
+            goto found;
+        }
+    }
+#endif
+    {
+        const struct Parrot_namealias *namealias
+            = Parrot_namealias_lookup(cstr, STRING_byte_length(name));
+        if (namealias)
+            retval = (INTVAL) namealias->codepoint;
+    }
+  found:
+    Parrot_str_free_cstring(cstr);
+    return retval;
+}
+
+/*
+
+=back
+
+*/
 
 /*
  * Local variables:

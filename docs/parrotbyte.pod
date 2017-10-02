@@ -1,21 +1,27 @@
-# Copyright (C) 2001-2007, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
 docs/parrotbyte.pod - The Parrot Bytecode (PBC) Format
 
-=head1 Format of the Parrot bytecode
+=head1 DESCRIPTION
 
-The 18-byte header consists of:
+This document describes the Parrot bytecode format.
+
+=head1 THE HEADER
+
+The 18-byte header consists of,
 
   0                                           7
   +----------+----------+----------+----------+
-  |         Parrot Magic = 0x 13155a1         |
+  | Parrot Magic = fe:50:42:43:0d:0a:1a:0a    |
   +----------+----------+----------+----------+
 
-B<Magic> is stored in native byteorder. The loader uses the byteorder header to
-convert the Magic to verify. More specifically, ALL words (non-bytes) in the
-bytecode file are stored in native order, unless otherwise specified.
+which reads as C<"<fe>PBC\r\n<1a>\n">. The B<Magic> is stored as
+endian-less sequence of C<unsigned char magic[18]>. The loader uses
+the byteorder header to convert the rest to the host format. More
+specifically, ALL words (non-bytes) in the bytecode file are stored in
+native order, unless otherwise specified.
 
   8          9         10         11
   +----------+----------+----------+
@@ -31,7 +37,9 @@ information.
 B<Byteorder> currently supports two values: (0-Little Endian, 1-Big Endian)
 
 B<FloatType> 0 is IEEE 754 8 byte double, FloatType 1 is
-i386 little endian 12 byte long double.
+i386 little endian 12 byte long double, FloatType 2 is native
+16 byte long double, either powerpc double double, intel 12 byte
+padded long double or true IEEE 16 byte long double.
 
   11        12         13         14         15         16
   +----------+----------+----------+----------+----------+
@@ -113,29 +121,17 @@ Currently these segment types are defined:
 
 =over 4
 
-=item 0
+=item Directory segment
 
-Directory segment
+=item Unknown segment (conforms to a default segment)
 
-=item 1
+=item Fixup segment
 
-Unknown segment (conforms to a default segment)
+=item Constant table segment
 
-=item 2
+=item Bytecode segment
 
-Fixup segment
-
-=item 3
-
-Constant table segment
-
-=item 4
-
-Bytecode segment
-
-=item 5
-
-Debug segment
+=item Debug segment
 
 =back
 
@@ -143,7 +139,7 @@ Debug segment
 
 This is not determined yet.
 
-=head2 Unknown (default) and byte code segments
+=head2 Unknown (default) and bytecode segments
 
 These have only the common segment header and the opcode stream appended. The
 opcode stream is an F<mmap()>ed memory region, if your operating system
@@ -165,9 +161,9 @@ consider these data as readonly.
   | label offset                              |
   +----------+----------+----------+----------+
 
-Fixup type B<enum_fixup_sub>, has a label symbol that is the name
-of the "sub" and an offset into the constant table, referencing a Sub, Closure
-or Coroutine PMC.
+The fixup type for constant or ascii strings has a label symbol that is the
+name of the "sub" and an offset into the constant table, referencing a
+Sub, Closure or Coroutine PMC.
 
 =head2 Debug Segment
 
@@ -241,7 +237,7 @@ For each constant:
 For integer constants:
 
   << integer constants are represented as manifest constants in
-     the byte code stream currently, limiting them to 32 bit values. >>
+     the bytecode stream currently, limiting them to 32 bit values. >>
 
 For number constants (S is constant, and is equal to C<sizeof(FLOATVAL)>):
 
@@ -284,7 +280,7 @@ If S' E<gt> S, then the extra bytes are filled with zeros.
 
 =head2 BYTE CODE SEGMENT
 
-The pieces that can be found in the byte code segment are as follows:
+The pieces that can be found in the bytecode segment are as follows:
 
   +----------+----------+----------+----------+
   |              Operation Code               |
@@ -328,6 +324,7 @@ mentioned in some of the early Parrot documents.
 
 =head1 SEE ALSO
 
-F<packfile.c>, F<packfile.h>, F<packout.c>, F<packdump.c>, F<pf/*.c>, and the
+F<packfile.c>, F<packfile.h>, F<packdump.c>, F<pf/*.c>, and the
 B<pbc_dump> utility F<pbc_dump.c>.
 
+=cut

@@ -1,5 +1,5 @@
 #! perl
-# Copyright (C) 2007-2008, Parrot Foundation.
+# Copyright (C) 2007-2012, Parrot Foundation.
 
 use strict;
 use warnings;
@@ -8,6 +8,16 @@ use File::Glob;
 use File::Spec;
 
 use Test::More;
+
+=head1 DESCRIPTION
+
+This script checks pccmethod dependencies.
+
+=head1 BUGS
+
+This isn't part of t/src/checkdepend.t
+
+=cut
 
 my $pmc_dir  = File::Spec->catfile(qw( src pmc *.pmc ));
 my @pmcs     = grep { contains_pccmethod($_) } glob($pmc_dir);
@@ -22,7 +32,7 @@ while (<$fh>) {
     next unless /$find_rx/;
     my ($file, $dependencies) = ($1, $2);
 
-    ok( $dependencies =~ /PCCMETHOD\.pm/,
+    ok( $dependencies =~ /PCCMETHOD\.pm|\$\(PMC2C_FILES\)/,
         "$file should mark PCCMETHOD.pm dependency in Makefile" );
 }
 
@@ -32,7 +42,7 @@ sub contains_pccmethod {
 
     local $_;
     while (<$fh>) {
-        next unless /METHOD/;
+        next unless /\bMETHOD\b/;
         return 1;
     }
 

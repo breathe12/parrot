@@ -1,4 +1,4 @@
-# Copyright (C) 2007-2010, Parrot Foundation.
+# Copyright (C) 2007-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -62,7 +62,7 @@ Configure. This can be used to hold warnings that aren't ready to be
 added to the default run yet.
 
 'only' should be used as we add new warnings to the build, it will let
-us insure that files we know are clean for a new warning stay clean.
+us ensure that files we know are clean for a new warning stay clean.
 
 'never' should be used when a particular file contains generated code
 (e.g. imcc) and we cannot update it to conform to the standards.
@@ -70,10 +70,13 @@ us insure that files we know are clean for a new warning stay clean.
 'todo' functions just like never does, but it indicates that these
 files are expected to eventually be free of this warning.
 
+'override' adds warnings to the end, to override previous warnings enabled
+by -Wall or -Wextra for example.
+
 Note that there is no actual requirement that the 'file' be a full path
 to a .c file; the file could be "PMCS" or "OPS" or some other identifier;
 whatever the value, it will generate a Config entry prefixed with
-C<ccwarn::>, which will probably be used via @@ expansion in a makefile.
+C<ccwarn::>, which will be used via @@ expansion in a makefile.
 
 It is tempting to put this into a config file, but having it in
 perl gives us the ability to dynamically setup certain warnings based
@@ -98,27 +101,35 @@ sub _init {
     my $gpp = {};
     my $icc = {};
 
-    my @gcc_or_gpp = qw(
+    # man gcc
+    # -Wall contains:
+    #   -Waddress -Warray-bounds (only with -O2) -Wc++0x-compat -Wchar-subscripts
+    #   -Wenum-compare (in C/Objc; this is on by default in C++) -Wimplicit-int (C and
+    #    Objective-C only) -Wimplicit-function-declaration (C and Objective-C only) -Wcomment
+    #   -Wformat -Wmain (only for C/ObjC and unless -ffreestanding) -Wmissing-braces -Wnonnull
+    #   -Wparentheses -Wpointer-sign -Wreorder -Wreturn-type -Wsequence-point -Wsign-compare
+    #    (only in C++) -Wstrict-aliasing -Wstrict-overflow=1 -Wswitch -Wtrigraphs
+    #   -Wuninitialized -Wunknown-pragmas -Wunused-function -Wunused-label -Wunused-value
+    #   -Wunused-variable -Wvolatile-register-var
+    # -Wextra contains:
+    #   -Wclobbered -Wempty-body -Wignored-qualifiers -Wmissing-field-initializers
+    #   -Wmissing-parameter-type (C only) -Wold-style-declaration (C only) -Woverride-init
+    #   -Wsign-compare -Wtype-limits -Wuninitialized -Wunused-parameter (only with -Wunused or
+    #   -Wall) -Wunused-but-set-parameter (only with -Wunused or -Wall)
+    my @gcc_or_gpp_basic = qw(
+        -fpermissive
         -falign-functions=16
         -funit-at-a-time
+        -fexcess-precision=standard
         -maccumulate-outgoing-args
-        -W
         -Wall
+        -Wextra
         -Waggregate-return
-        -Wcast-align
         -Wcast-qual
-        -Wchar-subscripts
-        -Wcomment
         -Wdisabled-optimization
         -Wdiv-by-zero
-        -Wenum-compare
         -Wendif-labels
-        -Wextra
-        -Wformat
-        -Wformat-extra-args
-        -Wformat-nonliteral
-        -Wformat-security
-        -Wformat-y2k
+        -Wno-format
         -Wimplicit
         -Wimport
         -Winit-self
@@ -126,15 +137,13 @@ sub _init {
         -Winvalid-pch
         -Wjump-misses-init
         -Wlogical-op
-        -Wmissing-braces
-        -Wmissing-field-initializers
+        -Werror=missing-braces
+        -Werror=missing-declarations
         -Wno-missing-format-attribute
         -Wmissing-include-dirs
         -Wmultichar
         -Wpacked
-        -Wparentheses
         -Wpointer-arith
-        -Wpointer-sign
         -Wreturn-type
         -Wsequence-point
         -Wsign-compare
@@ -142,60 +151,75 @@ sub _init {
         -Wstrict-aliasing=2
         -Wswitch
         -Wswitch-default
-        -Wtrigraphs
-        -Wundef
+        -Werror=undef
         -Wno-unused
-        -Wunknown-pragmas
         -Wvariadic-macros
         -Wwrite-strings
+        -Wstack-usage=500
     );
 
-    $gcc->{'basic'} = [ @gcc_or_gpp ];
-    $gpp->{'basic'} = [ @gcc_or_gpp ];
-
-    # Add some gcc-only warnings that would break g++
-    push @{$gcc->{'basic'}}, qw(
-        -Wbad-function-cast
+    # gcc-only warnings that would break g++
+    my @gcc_basic = qw(
         -Wc++-compat
-        -Wdeclaration-after-statement
         -Werror=declaration-after-statement
-        -Wimplicit-function-declaration
-        -Wimplicit-int
-        -Wmain
-        -Wmissing-declarations
-        -Wmissing-prototypes
-        -Wnested-externs
-        -Wnonnull
-        -Wold-style-definition
-        -Wstrict-prototypes
+        -Werror=implicit-function-declaration
+        -Werror=missing-prototypes
+        -Werror=nested-externs
+        -Werror=old-style-definition
+        -Werror=strict-prototypes
     );
 
-    my $gcc_or_gpp_cage = [ qw(
+    $gcc->{'basic'} = [ @gcc_or_gpp_basic, @gcc_basic ];
+    $gpp->{'basic'} = [ @gcc_or_gpp_basic ];
+
+    my @gcc_or_gpp_cage = qw(
         -std=c89
-        -Werror=implicit-function-declaration
+        -Wfloat-equal
+        -Wformat-extra-args
+        -Wformat-nonliteral
+        -Wformat-security
+        -Wformat-y2k
         -Wformat=2
         -Wlarger-than-4096
-        -Wlong-long
         -Wmissing-format-attribute
         -Wdeprecated-declarations
-        -Wno-format-extra-args
         -Wno-import
-        -Wsuggest-attribute=pure
+        -Wredundant-decls
+        -Wshadow
+        -Wstrict-overflow=5
         -Wsuggest-attribute=const
+        -Wsuggest-attribute=noreturn
+        -Wsuggest-attribute=returns_nonnull
+        -Wsuggest-attribute=pure
+        -Wsuggest-attribute=warn_unused_result
+        -Wsuggest-attribute=hot
+        -Wtrampolines
         -Wunreachable-code
+        -Wunsafe-loop-optimizations
         -Wunused
         -Wunused-function
         -Wunused-label
         -Wunused-value
         -Wunused-variable
-    ) ];
+        -Wvolatile-register-var
+    );
 
-    $gcc->{'cage'} = $gcc_or_gpp_cage;
-    $gpp->{'cage'} = $gcc_or_gpp_cage;
+    my @gpp_cage = qw(
+        -Weffc++
+        -Wstrict-null-sentinel
+        -Wtraditional
+        -Wuseless-cast
+    );
 
+    $gcc->{'cage'} = [ @gcc_or_gpp_cage ];
+    $gpp->{'cage'} = [ @gcc_or_gpp_cage, @gpp_cage ];
+
+    # strip from the list
     $gcc->{'todo'} = $gpp->{'todo'} = {
         '-Wformat-nonliteral' => [ qw(
-            src/spf_render.c
+            src/string/spf_render.c
+            src/io/api.c
+            src/exit.c
             compilers/imcc/optimizer.c
         ) ],
         '-Wstrict-prototypes' => [ qw(
@@ -203,19 +227,27 @@ sub _init {
             src/extra_nci_thunks.c
         ) ],
     };
-
+    # strip from the list
     $gcc->{'never'} = $gpp->{'never'} = {
         '-Wformat-nonliteral' => [ qw(
             compilers/imcc/imclexer.c
         ) ],
         '-Wswitch-default' => [ qw(
             compilers/imcc/imclexer.c
+            compilers/imcc/imcparser.c
         ) ],
         '-Wcast-qual' => [ qw(
             compilers/imcc/imcparser.c
         ) ],
-        '-Wlogical-op' => [ qw(
+        '-Wsign-compare' => [ qw(
+            compilers/imcc/imclexer.c
             compilers/imcc/imcparser.c
+        ) ],
+    };
+    # add at the end
+    $gcc->{'override'} = $gpp->{'override'} = {
+        '-Wno-unused-result' => [ qw(
+            src/ops/core_ops.c
         ) ],
     };
 
@@ -234,11 +266,11 @@ sub _init {
         -Wformat
         -Wformat-security
         -Wmain
+        -Wmaybe-uninitialized
         -Wmissing-declarations
         -Wmissing-prototypes
         -Wpointer-arith
         -Wport
-        -Wreturn-type
         -Wshadow
         -Wstrict-prototypes
         -Wuninitialized
@@ -263,6 +295,22 @@ sub _init {
     $data->{'warnings'}{'g++'} = $gpp;
     $data->{'warnings'}{'icc'} = $icc;
     $data->{'warnings'}{'clang'} = $gcc;
+    $data->{'warnings'}{'clang'}->{'cage'} = [ @gcc_or_gpp_cage, '-Wcast-align' ];
+
+    $data->{'warnings'}{'clang'}->{'override'} = {
+        '-Wno-format-nonliteral' => [ qw(
+            src/string/sprintf.c
+            src/string/spf_render.c
+        ) ],
+        '-Wno-unused-parameter' => [ qw(
+            compilers/imcc/imclexer.c
+            src/dynoplibs/math_ops.c
+        ) ],
+        '-Wno-sign-compare' => [ qw(
+            compilers/imcc/imclexer.c
+            compilers/imcc/imcparser.c
+        ) ],
+    };
 
     ## end gcc/g++
 
@@ -276,13 +324,11 @@ sub runstep {
 
     my $compiler = '';
     if ( defined $conf->data->get('gccversion') ) {
-        $compiler = $conf->data->get('g++') ? 'g++' : 'gcc';
+        $compiler = $conf->data->get('g++') ? 'g++' :
+            $conf->data->get('clang') ? 'clang' : 'gcc';
     }
     elsif ( $conf->option_or_data('cc') =~ /icc/ ) {
         $compiler = 'icc';
-    }
-    elsif ( $conf->option_or_data('cc') =~ /clang/ ) {
-        $compiler = 'clang';
     }
 
     if ($compiler eq '') {
@@ -298,6 +344,26 @@ sub runstep {
         push @{$self->{'warnings'}{$compiler}{'basic'}},
             '-fvisibility=hidden';
     };
+
+    # cygwin gcc is more particular about -fpermissive in c mode.
+    # this is the 1st element
+    if ( $^O eq 'cygwin' and $compiler eq 'gcc' and
+         $conf->data->get('gccversion') >= 4.0 ) {
+        shift @{$self->{'warnings'}{'gcc'}{'basic'}};
+    };
+
+    # icu4.2 -4.9 uset.h had a wrong uset_openEmpty() declaration missing (void) GH #867
+    my $icu_version = $conf->data->get('icu_version');
+    if ($icu_version and $icu_version >= 42.0 and $icu_version < 50.1) {
+        $self->{'warnings'}{$compiler}{'never'}{'-Werror=strict-prototypes'} =
+          [ 'src/string/encoding/shared.c' ];
+    }
+
+    if ($conf->data->get('clang') and $compiler eq 'g++') { # clang++
+        $self->{'warnings'}{'g++'}{'override'} =
+          $self->{'warnings'}{'clang'}->{'override'};
+    }
+
     # standard warnings.
     my @warnings = grep {$self->valid_warning($conf, $_)}
         @{$self->{'warnings'}{$compiler}{'basic'}};
@@ -305,7 +371,7 @@ sub runstep {
     # --cage?
     if ($conf->options->get('cage')) {
         push @warnings, grep {$self->valid_warning($conf, $_)}
-            @{$self->{'warnings'}{$compiler}{'cage'}}
+            @{$self->{'warnings'}{$compiler}{'cage'}};
     }
 
     # -- only?
@@ -332,6 +398,19 @@ sub runstep {
             }
         }
     }
+
+    if (exists $self->{'warnings'}{$compiler}{override}) {
+        my %add = %{$self->{'warnings'}{$compiler}{override}};
+        foreach my $warning (keys %add) {
+            if ($self->valid_warning($conf, $warning)) {
+                foreach my $file (@{$add{$warning}}) {
+                    $per_file{$file} = exists $per_file{$file}
+                      ? [ @{$per_file{$file}}, $warning ] : [ @warnings, $warning ];
+                }
+            }
+        }
+    }
+
 
     $conf->data->set('ccwarn', join(' ', @warnings));
     foreach my $file (keys %per_file) {
@@ -363,9 +442,9 @@ sub valid_warning {
     # This should be using a temp file name.
     my $output_file = 'test.cco';
 
-    $conf->debug("trying attribute '$warning'\n");
+    $conf->debug("trying warning '$warning'\n");
 
-    my $cc = $conf->option_or_data('cc');
+    my $cc = $conf->data->get('cc');
     $conf->cc_gen('config/auto/warnings/test_c.in');
 
     my $ccflags  = $conf->data->get('ccflags');

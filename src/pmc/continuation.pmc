@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2001-2010, Parrot Foundation.
+Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -54,8 +54,8 @@ pmclass Continuation auto_attrs provides invokable {
     ATTR PMC               *to_call_object;  /* pointer to CallSignature */
     /* a Continuation keeps the from_ctx alive */
     ATTR PMC               *from_ctx;        /* sub, this cont is returning from */
-    ATTR int                runloop_id;      /* id of the creating runloop. */
-    ATTR int                invoked;         /* flag when a handler has been invoked. */
+    ATTR INTVAL             runloop_id;      /* id of the creating runloop. */
+    ATTR INTVAL             invoked;         /* flag when a handler has been invoked. */
 
 /*
 
@@ -125,21 +125,53 @@ Marks the continuation as live.
 
 */
 
-    VTABLE void mark() {
-        PMC *tmp;
+    VTABLE void mark() :no_wb {
+        Parrot_Continuation_attributes * const cont = PARROT_CONTINUATION(SELF);
 
         /* If Continuation wasn't fully constructed yet */
-        if (!PMC_data(SELF))
-            return;
+        if (!cont) return;
 
-        GET_ATTR_to_ctx(INTERP, SELF, tmp);
-        Parrot_gc_mark_PMC_alive(INTERP, tmp);
+        if (cont->to_ctx)         Parrot_gc_mark_PMC_alive(INTERP, cont->to_ctx);
+        if (cont->to_call_object) Parrot_gc_mark_PMC_alive(INTERP, cont->to_call_object);
+        if (cont->from_ctx)       Parrot_gc_mark_PMC_alive(INTERP, cont->from_ctx);
 
-        GET_ATTR_to_call_object(INTERP, SELF, tmp);
-        Parrot_gc_mark_PMC_alive(INTERP, tmp);
+        if (cont->seg && ! Interp_flags_TEST(interp, PARROT_IS_THREAD))
+            Parrot_gc_mark_PMC_alive(INTERP, cont->seg->base.pf->view);
+    }
 
-        GET_ATTR_from_ctx(INTERP, SELF, tmp);
-        Parrot_gc_mark_PMC_alive(INTERP, tmp);
+/*
+
+=item C<PMC * get_attr_str(STRING *attr)>
+
+Get the value of an attribute by name
+
+=cut
+
+*/
+
+    VTABLE PMC * get_attr_str(STRING *attr) :no_wb {
+        PMC * val = PMCNULL;
+        INTVAL ival;
+        /*if (STRING_equal(INTERP, attr, CONST_STRING(INTERP, "seg")))
+            GET_ATTR_seg(INTERP, SELF, val);*/
+        if (STRING_equal(INTERP, attr, CONST_STRING(INTERP, "to_ctx")))
+            GET_ATTR_to_ctx(INTERP, SELF, val);
+        else if (STRING_equal(INTERP, attr, CONST_STRING(INTERP, "to_call_object")))
+            GET_ATTR_to_call_object(INTERP, SELF, val);
+        else if (STRING_equal(INTERP, attr, CONST_STRING(INTERP, "from_ctx")))
+            GET_ATTR_from_ctx(INTERP, SELF, val);
+        else if (STRING_equal(INTERP, attr, CONST_STRING(INTERP, "runloop_id"))) {
+            GET_ATTR_runloop_id(INTERP, SELF, ival);
+            val = Parrot_pmc_box_integer(INTERP, ival);
+        }
+        else if (STRING_equal(INTERP, attr, CONST_STRING(INTERP, "invoked"))) {
+            GET_ATTR_invoked(INTERP, SELF, ival);
+            val = Parrot_pmc_box_integer(INTERP, ival);
+        }
+        else
+            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_ATTRIB_NOT_FOUND,
+                "%Ss: Attribute %Ss not found", VTABLE_name(INTERP, SELF), attr);
+        return val;
     }
 
 
@@ -153,7 +185,7 @@ Creates and returns a clone of the continuation.
 
 */
 
-    VTABLE PMC *clone() {
+    VTABLE PMC *clone() :no_wb {
         /* Start to prepare for subclassable continuations */
         return Parrot_pmc_new_init(INTERP, SELF->vtable->base_type, SELF);
     }
@@ -200,7 +232,7 @@ Returns the pointer to the return instruction.
 
 */
 
-    VTABLE void *get_pointer() {
+    VTABLE void *get_pointer() :no_wb {
         opcode_t          *address;
 
         GET_ATTR_address(INTERP, SELF, address);
@@ -220,7 +252,7 @@ Returns whether the subroutine is defined.
 
 */
 
-    VTABLE INTVAL defined() {
+    VTABLE INTVAL defined() :no_wb {
         opcode_t          *address;
 
         GET_ATTR_address(INTERP, SELF, address);
@@ -228,7 +260,7 @@ Returns whether the subroutine is defined.
     }
 
 
-    VTABLE INTVAL get_bool() {
+    VTABLE INTVAL get_bool() :no_wb {
         opcode_t          *address;
 
         GET_ATTR_address(INTERP, SELF, address);
@@ -247,17 +279,15 @@ destination to continue execution.
 
 */
 
-    VTABLE opcode_t *invoke(void *next) {
+    VTABLE opcode_t *invoke(void *next) :no_wb {
+        UNUSED(next)
         PMC * const        from_obj = Parrot_pcc_get_signature(INTERP, CURRENT_CONTEXT(INTERP));
-        PMC               *to_ctx, *call_obj;
         opcode_t          *pc;
         PackFile_ByteCode *seg;
-        UNUSED(next)
 
         GET_ATTR_seg(INTERP, SELF, seg);
         GET_ATTR_address(INTERP, SELF, pc);
-        GET_ATTR_to_ctx(INTERP, SELF, to_ctx);
-        GET_ATTR_to_call_object(INTERP, SELF, call_obj);
+        SET_ATTR_invoked(INTERP, SELF, 1);
 
         Parrot_sub_continuation_check(INTERP, SELF);
         Parrot_sub_continuation_rewind_environment(INTERP, SELF);
@@ -267,7 +297,7 @@ destination to continue execution.
 
         /* switch segment */
         if (INTERP->code != seg)
-            Parrot_switch_to_cs(INTERP, seg, 1);
+            Parrot_pf_switch_to_cs(INTERP, seg, 1);
 
         return pc;
     }
@@ -283,11 +313,11 @@ Experimental: returns caller info as a STRING.
 
 */
 
-    VTABLE STRING *get_string() {
+    VTABLE STRING *get_string() :no_wb {
         PMC *to_ctx;
 
         GET_ATTR_to_ctx(INTERP, SELF, to_ctx);
-        return Parrot_sub_Context_infostr(INTERP, to_ctx);
+        return Parrot_sub_Context_infostr(INTERP, to_ctx, 0);
     }
 
 
@@ -342,7 +372,7 @@ Experimental: return callers PMC or PMCNULL if none.
 
 =item C<PMC *continuation()>
 
-Experimental: returns continuation PMC of this Continuation or PMCNULL if none.
+Experimental: fetches the return continuation PMC of this Continuation or PMCNULL if none.
 
 =cut
 

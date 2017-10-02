@@ -1,4 +1,4 @@
-# Copyright (C) 2007-2009, Parrot Foundation.
+# Copyright (C) 2007-2014, Parrot Foundation.
 package Parrot::Configure::Options::Conf::Shared;
 
 use strict;
@@ -17,6 +17,7 @@ our @shared_valid_options = qw{
     ccflags
     ccwarn
     configure_trace
+    coveragedir
     cxx
     darwin_no_fink
     darwin_no_macports
@@ -24,11 +25,14 @@ our @shared_valid_options = qw{
     debugging
     define
     disable-rpath
+    disable-shared
+    disable-static
+    disable-threads
     exec-prefix
-    execcapable
     fatal
     fatal-step
     floatval
+    gc
     help
     hintsfile
     icu-config
@@ -38,8 +42,6 @@ our @shared_valid_options = qw{
     infodir
     inline
     intval
-    jitcapable
-    buildframes
     ld
     ldflags
     lex
@@ -48,6 +50,7 @@ our @shared_valid_options = qw{
     libs
     link
     linkflags
+    llvm-config
     localstatedir
     m
     make
@@ -60,7 +63,6 @@ our @shared_valid_options = qw{
     ops
     optimize
     parrot_is_shared
-    pkgconfigdir
     prefix
     profile
     sbindir
@@ -71,6 +73,7 @@ our @shared_valid_options = qw{
     verbose
     verbose-step
     version
+    with-llvm
     without-crypto
     without-core-nci-thunks
     without-extra-nci-thunks
@@ -86,6 +89,24 @@ our @shared_valid_options = qw{
     without-zlib
     yacc
 };
+
+our @reverse_valid_options;
+for (@shared_valid_options) {
+    if (/^with-(.*)/) {
+        push @reverse_valid_options, "without-$1";
+    }
+    elsif (/^without-(.*)/) {
+        push @reverse_valid_options, "with-$1";
+    }
+    elsif (/^enable-(.*)/) {
+        push @reverse_valid_options, "disable-$1";
+    }
+    elsif (/^disable-(.*)/) {
+        push @reverse_valid_options, "enable-$1";
+    }
+}
+
+push @shared_valid_options, @reverse_valid_options;
 
 ################### DOCUMENTATION ###################
 

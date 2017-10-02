@@ -1,9 +1,9 @@
 #! perl
 ################################################################################
-# Copyright (C) 2001-2009, Parrot Foundation.
+# Copyright (C) 2001-2016, Parrot Foundation.
 ################################################################################
 
-=head1 TITLE
+=head1 NAME
 
 tools/dev/install_files.pl - Copy files to their correct locations
 
@@ -43,14 +43,20 @@ The library directory. Defaults to '/usr/lib'.
 
 The header directory. Defaults to '/usr/include'.
 
+=item C<mandir>
+
+The man directory. Defaults to '/usr/share/man'.
+
+=item C<datadir>
+
+The data directory. Defaults to '/usr/share'.
+
 =back
 
 =head1 SEE ALSO
 
 See F<lib/Parrot/Manifest.pm> for a detailed description of the MANIFEST
 format.
-
-F<tools/dev/mk_manifests.pl>
 
 =cut
 
@@ -77,6 +83,8 @@ my %options = (
     libdir      => '/usr/lib',       # parrot/ subdir added below
     includedir  => '/usr/include',   # parrot/ subdir added below
     docdir      => '/usr/share/doc', # parrot/ subdir added below
+    mandir      => '/usr/share/man', # man1/ subdir added below
+    datadir     => '/usr/share/',    # parrot/ subdir added below
     versiondir  => '',
     'dry-run'   => 0,
     packages    => 'main|library|pge',
@@ -87,15 +95,19 @@ foreach (@ARGV) {
     if (/^--([^=]+)=(.*)/) {
         $options{$1} = $2;
     }
+    elsif (/^--(dry-run)/) {
+        $options{$1} = 1;
+    }
     else {
         push @manifests, $_;
     }
 }
 
 my $parrotdir = $options{versiondir};
+Parrot::Install::sanitycheck_install(); # GH #910
 
 # Set up transforms on filenames
-my(@transformorder) = qw(lib bin include doc pkgconfig ^compilers);
+my(@transformorder) = qw(lib bin include doc man ^compilers);
 my(%metatransforms) = (
     lib => {
         ismeta => 1,
@@ -151,18 +163,13 @@ my(%metatransforms) = (
             return($filehash);
         },
     },
-    pkgconfig => {
+    man => {
         ismeta => 1,
-        optiondir => 'lib',
+        optiondir => 'man',
         transform => sub {
             my($filehash) = @_;
-            # For the time being this is hardcoded as being installed under
-            # libdir as it is typically done with automake installed packages.
-            # If the --pkgconfigdir option is used, then the default value will
-            # be overwritten with the specified subdirectory under libdir.
-            $filehash->{DestDirs} = ['pkgconfig', $parrotdir];
-            $filehash->{DestDirs} = [$options{pkgconfigdir}]
-                if $options{pkgconfigdir};
+            $filehash->{Dest} =~ s{^.*/}{}; # basedir only
+            $filehash->{Dest} =~ s{^(.+\.)(.+)$}{man$2/$1$2};
             return($filehash);
         },
     },
@@ -182,6 +189,7 @@ my($filehashes, $directories) = lines_to_files(
 );
 
 unless ( $options{'dry-run'} ) {
+    $directories->{File::Spec->catdir( $options{datadir}, $parrotdir)} = 1;
     create_directories($options{destdir}, $directories);
 }
 
@@ -190,11 +198,19 @@ unless ( $options{'dry-run'} ) {
 my($filehash, @removes, $removes);
 foreach $filehash (grep { $_->{Installable} } @$filehashes) {
     my( $src, $dest ) = map { $filehash->{$_} } qw(Source Dest);
-    my ($file) = $src =~ /installable_(.+)$/;
+    my (undef,$file) = $src =~ /installable_(.+)$/;
     next unless $file;
     if((grep { $_->{Source} =~ /^$file$/ } @$filehashes) and -e $file) {
-        print "skipping $file, using installable_$file instead\n";
+        print "skipping $file, using $src instead\n";
         push @removes, $file;
+    }
+    # remove blib/lib/libparrotsrc.$VERSION.$SOEXT
+    if($src =~ m{^blib/lib/libparrotsrc\.(\d.*)$}) {
+        $file = 'blib/lib/libparrot.'.$1;
+        if ((grep { $_->{Source} =~ m{^blib/lib/libparrot\.\d} } @$filehashes) and -e $file) {
+            print "skipping $src, using $file instead\n";
+            push @removes, $src;
+        }
     }
 }
 $removes = join '|', @removes;
@@ -213,7 +229,7 @@ foreach $filehash (grep { ! $_->{Installable} } @$filehashes ) {
     }
 }
 
-install_files($options{destdir}, $options{'dry-run'}, $filehashes);
+install_files(\%options, '', $filehashes);
 
 print "Finished install_files.pl\n";
 

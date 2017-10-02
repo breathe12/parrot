@@ -189,7 +189,7 @@ X<named parameters>
 Named parameters are an alternative to positional parameters. Instead of
 passing parameters by their position in the string, Parrot assigns
 arguments to parameters by their name.  Consequently you may pass named
-parameters in any order.  Declare named parameters with with the
+parameters in any order.  Declare named parameters with the
 C<:named>X<:named parameter modifier> modifier.
 
 This example declares two named parameters in the subroutine C<shoutout>
@@ -631,9 +631,9 @@ in the current pad.  The C<find_lex> opcode retrieves a variable from the curren
 
   $P0 = new "Integer"       # create a variable
   $P0 = 10                  # assign value to it
-  store_lex "foo", $P0      # store with lexical name "foo"
+  store_lex 'foo', $P0      # store with lexical name "foo"
   # ...
-  $P1 = find_lex "foo"      # get the lexical "foo" into $P1
+  $P1 = find_lex 'foo'      # get the lexical "foo" into $P1
   say $P1                   # prints 10
 
 =end PIR_FRAGMENT
@@ -645,6 +645,21 @@ follows these scoping rules:
 
       .local pmc foo
       .lex 'foo', foo
+
+=end PIR_FRAGMENT
+
+B<Limitation>: For now use only single-quotes for lexical variable
+names!  Double-quoted lexical names in C<.lex> are treated as already
+escaped, i.e. only as single-quoted and are not unescaped.
+
+So never use this:
+
+=begin PIR_FRAGMENT
+
+    .lex "foo\\o", $P3       # wrong, parsed as 'foo\\o'
+    $P1 = box 'ok 2'
+    store_lex "foo\\o", $P1  # Lexical 'foo\o' not found
+    $P2 = find_lex "foo\\o"
 
 =end PIR_FRAGMENT
 
@@ -1044,16 +1059,16 @@ This example prints the correct value C<7>.
 
 =head2 Coroutines
 
-X<coroutines>
-X<subroutines; coroutines>
-Coroutines are similar to subroutines except that they have an internal
-notion of I<state>.  In addition to performing a normal C<.return> to
-return control flow back to the caller and destroy the execution
-environment of the subroutine, coroutines may also perform a C<.yield>
-operation.  C<.yield> returns a value to the caller like C<.return> can,
-but it does not destroy the execution state of the coroutine. The next
-call to the coroutine continues execution from the point of the last
-C<.yield>, not at the beginning of the coroutine.
+X<coroutines> X<subroutines; coroutines>
+Coroutines are similar to subroutines except that they have an
+internal list of I<states> for each C<.yield> call. In addition to
+performing a normal C<.return> to return control flow back to the
+caller and destroy the execution environment of the subroutine,
+coroutines may also perform a C<.yield> operation.  C<.yield> returns
+a value to the caller like C<.return> can, but it does not destroy the
+execution state of the coroutine. The next call to the coroutine
+continues execution from the point of the last C<.yield>, not at the
+beginning of the coroutine.
 
 Inside a coroutine continuing from a C<.yield>, the entire execution
 environment is the same as it was when the coroutine C<.yield>ed. This

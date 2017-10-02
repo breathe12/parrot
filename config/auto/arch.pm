@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2007, Parrot Foundation.
+# Copyright (C) 2001-2015, Parrot Foundation.
 
 =head1 NAME
 
@@ -10,8 +10,9 @@ Determines the CPU architecture, the operating system.
 
 This code was formerly part of configuration step class auto::jit.
 
-TODO #356: This checks for the perl5 architecture, not for possible
-commandline overrides, such as -m64, -m32 or -Wl,-melf_x86_64.
+This checks for the inherited perl5 architecture, not for possible
+commandline overrides, such as -m64, -m32, mabi=64 or -Wl,-melf_x86_64.
+See auto::gcc for those as they are compiler specific. (TT 356, GH #1181)
 
 =cut
 
@@ -26,7 +27,7 @@ use base qw(Parrot::Configure::Step);
 sub _init {
     my $self = shift;
     my %data;
-    $data{description} = q{Determine CPU architecture and OS};
+    $data{description} = q{Determine CPU architecture and type, and OS};
     $data{result}      = q{};
     my $unamep;
     eval {
@@ -50,7 +51,7 @@ sub runstep {
 
 
     $conf->debug(
-        "determining operating system and cpu architecture\n",
+        "determining operating system and cpu architecture and type\n",
         "archname: $archname\n")
     ;
 
@@ -67,7 +68,7 @@ sub runstep {
         $osname = 'darwin';
         $cpuarch = ( $self->{unamep} eq 'powerpc' )
             ? 'ppc'
-            : 'i386';
+            : 'x86';
     }
 
     # cpuarch and osname are reversed in archname on windows
@@ -76,8 +77,18 @@ sub runstep {
         $osname = 'MSWin32';
     }
     elsif ( $osname =~ /cygwin/i || $cpuarch =~ /cygwin/i ) {
-        $cpuarch = 'i386';
+        $cpuarch = 'x86'; # TODO 64 how?
         $osname  = 'cygwin';
+    }
+    elsif ( $osname =~ /msys/i || $cpuarch =~ /msys/i ) {
+        # msys-perl is 32bit-only, so we use the information provided by
+        # the OS. Might be incorrect in case of mingw32 on 64bit hardware.
+        $cpuarch = lc (
+            $ENV{PROCESSOR_ARCHITEW6432} ||
+            $ENV{PROCESSOR_ARCHITECTURE} ||
+            'x86'
+        );
+        $osname = 'msys';
     }
     elsif ( $cpuarch eq 'i86pc' and $osname eq 'solaris' ) {
         # That's only the perl value, and is the same for both i386
@@ -85,18 +96,49 @@ sub runstep {
         chomp($archname = `uname -p`);
         $cpuarch = $archname;
     }
+    elsif ( $osname =~ /^VMS/ ) {
+        ($cpuarch = $osname) =~ s/^VMS_//;
+        $osname = 'VMS';
+    }
 
     if ( $archname =~ m/powerpc/ ) {
         $cpuarch = 'ppc';
     }
 
-    $cpuarch =~ s/armv[34]l?/arm/i;
+    $cpuarch =~ s/armv[347]l?/arm/i;
     $cpuarch =~ s/i[456]86/i386/i;
     $cpuarch =~ s/x86_64/amd64/i;
+    $cpuarch =~ s/x86/i386/i;
+
+    my $cpu_type = "unknown";
+    eval {
+        if ( -e '/proc/cpuinfo' ) {
+            $cpu_type = _parse_cpuinfo('cat /proc/cpuinfo',
+                                       qr/model name\s+:/);
+        } elsif ($^O eq 'solaris' and -x '/usr/bin/kstat') {
+            $cpu_type = _parse_cpuinfo('/usr/bin/kstat -m cpu_info',
+                                       qr/brand/);
+        } elsif ($^O eq 'darwin' and -x '/usr/sbin/system_profiler') {
+            $cpu_type = _parse_cpuinfo('/usr/sbin/system_profiler SPHardwareDataType',
+                                       qr/Processor Name:/i);
+            $cpuarch = 'amd64' if $cpu_type =~ /^Intel Core/;
+        } elsif ($^O eq 'MSWin32' and defined $ENV{PROCESSOR_IDENTIFIER}) {
+            $cpu_type = $ENV{PROCESSOR_IDENTIFIER};
+        }
+    };
+    if ($conf->options->get('m')) {
+        if ($conf->options->get('m') eq '64' and $cpuarch eq 'i386') {
+            $cpuarch = 'amd64';
+        }
+        elsif ($conf->options->get('m') eq '32' and $cpuarch eq 'amd64') {
+            $cpuarch = 'i386';
+        }
+    }
 
     $conf->data->set(
         cpuarch  => $cpuarch,
-        osname   => $osname
+        cputype  => $cpu_type,
+        osname   => $osname,
     );
 
     $conf->data->set( 'platform' => $self->_get_platform( $conf ) );
@@ -120,9 +162,24 @@ sub _get_platform {
         $platform = 'ia64';
     }
 
-    $platform = 'generic' unless -d "config/gen/platform/$platform";
+    $platform = 'generic' unless -d "src/platform/$platform";
 
     return $platform;
+}
+
+sub _parse_cpuinfo {
+    my ($cmd, $match) = @_;
+    my $cpu_info;
+    chomp( $cpu_info = qx{ $cmd } );
+    my @cpu_info_lines = split /\n/, $cpu_info;
+    my ($model_name) = map m/$match(.*)$/, @cpu_info_lines;
+    if ( defined $model_name ) {
+        $model_name =~ s/^\s+//;
+        return $model_name;
+    }
+    else {
+        return 'unknown';
+    }
 }
 
 sub _report_verbose {

@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2015, Parrot Foundation.
 
 =head1 NAME
 
@@ -7,10 +7,12 @@ Parrot::Configure::Compiler - C-Related methods for configuration and more
 =head1 DESCRIPTION
 
 The Parrot::Configure::Compiler module provides methods inherited by
-Parrot::Configure which prepare and/or run C programs during
-compilation. Also other files like makefiles will be generated with methods
-from this module by replacing entries like C<@key@> with C<key>'s value from
-the configuration system's data.
+Parrot::Configure which prepare and/or run C programs during configure probes.
+Other methods from this module will be used to generate makefiles and other
+files.  Template entries of the form C<@key@> will be replaced with C<key>'s
+value from the currently created configuration system's data.
+
+Beware that Parrot::Config is not available at configure time.
 
 =head2 Methods
 
@@ -23,17 +25,16 @@ package Parrot::Configure::Compiler;
 use strict;
 use warnings;
 
-use base qw( Exporter );
-
 use Carp;
-use File::Spec;
-use lib ("lib");
+use File::Spec ();
+use lib ('lib');
 use Parrot::Configure::Utils qw(
     prompt copy_if_diff move_if_diff integrate
     capture_output check_progs _slurp
     _run_command _build_compile_command
     move_if_diff
 );
+use Parrot::BuildUtil qw( add_to_generated );
 
 # report the makefile and lineno
 sub makecroak {
@@ -85,6 +86,8 @@ These items are used from current config settings:
 
 Calls the compiler and linker on F<test_$$.c>.
 
+Returns the last error code.
+
 =cut
 
 sub cc_build {
@@ -116,6 +119,7 @@ sub cc_build {
     if ($link_result) {
         return $link_result;
     }
+    return;
 }
 
 =item C<cc_run()>
@@ -124,6 +128,8 @@ sub cc_build {
 
 Calls the F<test> (or F<test.exe>) executable. Any output is directed to
 F<test.out>.
+
+Returns the captured stdout, and in array context with the additional exit code.
 
 =cut
 
@@ -145,8 +151,7 @@ sub cc_run {
     }
 
     my $output = _slurp("./$test.out");
-
-    return $output;
+    return wantarray ? ($output, $run_error) : $output;
 }
 
 =item C<cc_run_capture()>
@@ -156,6 +161,9 @@ sub cc_run {
 Same as C<cc_run()> except that warnings and errors are also directed to
 F<test.out>.
 
+Returns the captured stdout combined with stderr, and in array context
+with the additional exit code.
+
 =cut
 
 sub cc_run_capture {
@@ -164,18 +172,18 @@ sub cc_run_capture {
     my $slash   = $conf->data->get('slash');
     my $verbose = $conf->options->get('verbose');
     my $test    = 'test_' . $$;
+    my $run_error;
 
     if ( defined( $_[0] ) && length( $_[0] ) ) {
         local $" = ' ';
-        _run_command( ".${slash}$test${exe} @_", "./$test.out", "./$test.out", $verbose );
+        $run_error = _run_command( ".${slash}$test${exe} @_", "./$test.out", "./$test.out", $verbose );
     }
     else {
-        _run_command( ".${slash}$test${exe}", "./$test.out", "./$test.out", $verbose );
+        $run_error = _run_command( ".${slash}$test${exe}", "./$test.out", "./$test.out", $verbose );
     }
 
     my $output = _slurp("./$test.out");
-
-    return $output;
+    return wantarray ? ($output, $run_error) : $output;
 }
 
 =item C<cc_clean()>
@@ -191,7 +199,7 @@ sub cc_clean {    ## no critic Subroutines::RequireFinalReturn
     unlink map "test_${$}$_", qw( .c .cco .ldo .out ),
         $conf->data->get(qw( o exe )),
         # MSVC
-        qw( .exe.manifest .ilk .pdb );
+        ($^O eq 'MSWin32' ? qw( .exe.manifest .ilk .pdb ) : ());
 }
 
 =item C<shebang_mod()>
@@ -210,7 +218,7 @@ sub shebang_mod {
     my ( $source, $target ) = @_;
 
     open my $in,  '<', $source       or die "Can't open $source: $!";
-    open my $out, '>', "$target.tmp" or die "Can't open $target.tmp: $!";
+    open my $out, '>', "${target}_tmp" or die "Can't open ${target}_tmp: $!";
 
     my $line = <$in>;
 
@@ -234,7 +242,7 @@ sub shebang_mod {
     close($in)  or die "Can't close $source: $!";
     close($out) or die "Can't close $target: $!";
 
-    move_if_diff( "$target.tmp", $target );
+    move_if_diff( "${target}_tmp", $target );
 }
 
 =item C<genfile()>
@@ -257,19 +265,18 @@ replacement syntax assumes the source text is on a single line.)
 
 =item file_type
 
-If set to a C<makefile>, C<c> or C<perl> value, C<comment_type> will be set
-to corresponding value.
-Moreover, when set to a C<makefile> value, it will enable
-C<conditioned_lines>.
+If set to a C<makefile>, C<c> or C<perl> value, C<comment_type> will be set to
+corresponding value.  Moreover, when set to a C<makefile> value, it will
+enable C<conditioned_lines>.
 
 Its value will be detected automatically by target file name unless you set
 it to a special value C<none>.
 
 =item conditioned_lines #IF #UNLESS #ELSIF #ELSE
 
-If conditioned_lines is true, then lines beginning in #IF, #UNLESS, #ELSIF, and
-#ELSE are evaluated conditionally, and the content after the C<:> is included
-or excluded, dependending on the evaluation of the expression.
+If conditioned_lines is true, then lines beginning in C<#IF>, C<#UNLESS>,
+C<#ELSIF>, and C<#ELSE> are evaluated conditionally, and the content after the
+C<:> is included or excluded, depending on the evaluation of the expression.
 
 Lines beginning with C<#IF(expr):> are skipped if the expr condition is false,
 otherwise the content after the C<:> is inserted. Lines beginning with
@@ -277,17 +284,32 @@ C<#UNLESS(expr):> are skipped if the expr condition is true, otherwise the
 content after the C<:> is inserted. Lines beginning with C<#ELSIF(expr):> or
 C<#ELSE:> are evaluated if the preceding C<#IF(expr):> evaluated to false.
 
-A condition expr may be:
+A condition C<expr> may be:
 
-  * A single key, which is true if a config key is true,
-  * Equal to the platform name or the osname - case-sensitive,
-  * A C<key==value> expression, which is true if the config key has the
-    expected value, or
-  * A logical combination of C<|>, C<OR>, C<&>, C<AND>, C<!>, C<NOT>.
+=over 4
 
-A key must only consist of the characters A-Z a-z 0-9 _ -, and is checked
+=item *
+
+A single key, which is true if a config key is true,
+
+=item *
+
+Equal to the platform name or the osname - case-sensitive,
+
+=item *
+
+A C<key==value> expression, which is true if the config key has the expected
+value, or
+
+=item *
+
+A logical combination of C<|>, C<OR>, C<&>, C<AND>, C<!>, C<NOT>.
+
+=back
+
+A key must only consist of the characters C<A-Z a-z 0-9 _ ->, and is checked
 case-sensitively against the configuration key or the platform name. Truth is
-defined as any value that is not 0, an empty string, or C<undef>.
+defined as any value that is not C<0>, an empty string, or C<undef>.
 
 The value in C<key==value> expressions may not contain spaces. Quotes in
 values are not supported.
@@ -369,7 +391,26 @@ syntax works ok.
 
 =back
 
-=back
+=item replace_slashes
+
+If set to a true value, then filenames on a win32 platform will get their
+forward slashes '/' automatically converted to '\'.
+win32 can handle forward slashes finer (since XP), but cmd.exe tries to
+detect /c and more as argument.
+If you ssh into cygwin for remote testing, or for smoker cronjobs
+calling cmd /c "nmake" or dmake or mingw32-make will fail.
+
+For example:
+
+    POD2MAN          = C:\perl516\perl\bin/pod2man
+    CC_INC           = -I./include -I./include/pmc
+    DEV_TOOLS_DIR = tools/dev
+    $(PERL) $(DEV_TOOLS_DIR)/headerizer.pl
+=>
+    POD2MAN          = C:\perl516\perl\bin\pod2man
+    CC_INC           = -I.\include -I.\include\pmc
+    DEV_TOOLS_DIR = tools\dev
+    $(PERL) $(DEV_TOOLS_DIR)\headerizer.pl
 
 =back
 
@@ -380,12 +421,9 @@ sub genfile {
     my ( $source, $target, %options ) = @_;
 
     my $calling_sub = (caller(1))[3] || q{};
-    if ( $calling_sub !~ /cc_gen$/ ) {
-        $conf->append_configure_log($target);
-    }
 
     open my $in,  '<', $source       or die "Can't open $source: $!";
-    open my $out, '>', "$target.tmp" or die "Can't open $target.tmp: $!";
+    open my $out, '>', "${target}_tmp" or die "Can't open ${target}_tmp: $!";
 
     if ( !exists $options{file_type}) {
         if ( $target =~ m/makefile$/i || $target =~ m/\.mak/) {
@@ -417,11 +455,12 @@ sub genfile {
         }
         if ( $options{file_type} eq 'makefile' ) {
             $options{conditioned_lines} = 1;
+            $options{replace_slashes} = 1 if $^O eq 'MSWin32';
         }
     }
 
     if ( $options{comment_type} ) {
-        my @comment = ( 'ex: set ro:',
+        my @comment = ( 'ex: set ro: -*- buffer-read-only:t -*-',
             'DO NOT EDIT THIS FILE',
             'Generated by ' . __PACKAGE__ . " from $source" );
 
@@ -445,6 +484,13 @@ sub genfile {
 
     if ($target eq 'CFLAGS') {
         $options{conditioned_lines} = 1;
+    }
+
+    if ( $options{manifest} ) {
+        add_to_generated( $target, @{$options{manifest}} );
+    }
+    elsif ($target !~ /^(cc_gen|test_)/) {
+        add_to_generated( $target, "[]" );
     }
 
     # this loop can not be implemented as a foreach loop as the body
@@ -590,13 +636,19 @@ sub genfile {
             }
         }egx;
 
+        my $warn_replace_slashes;
+        if ( $options{replace_slashes} and $^O eq 'MSWin32') {
+            # warn "option replace_slashes currently ignored\n" unless $warn_replace_slashes++;
+            $line =~ s{/}{\\}g;
+        }
+
         print $out $line;
     }
 
     close($in)  or die "Can't close $source: $!";
     close($out) or die "Can't close $target: $!";
 
-    move_if_diff( "$target.tmp", $target, $options{ignore_pattern} );
+    move_if_diff( "${target}_tmp", $target, $options{ignore_pattern} );
 }
 
 # Return the next subexpression from the expression in $_[0]
@@ -610,20 +662,20 @@ sub next_expr {
     my $s = $_[0];
     return "" unless $s;
     # start of a subexpression?
-    if ($s =~ /^\((.+)\)\s*(.*)/o) {    # longest match to matching closing paren
+    if ($s =~ /^\((.+)\)\s*(.*)/) {     # longest match to matching closing paren
         $_[0] = $2 ? $2 : "";           # modify the 2nd arg
         return $1;
     }
     else {
         $s =~ s/^\s+//;                 # left-trim to make it more robust
-        if ($s =~ m/^([-\w=]+)\s*(.*)?/o) { # shortest match to next non-word char
+        if ($s =~ /^([-\w=]+)\s*(.*)?/) { # shortest match to next non-word char
             # start with word expr
             $_[0] = $2 ? $2 : "";       # modify the 2nd arg expr in the caller
             return $1;
         }
         else {
             # special case: start with non-word op (perl-syntax only)
-            $s =~ m/^([|&!])\s*(.*)?/o; # shortest match to next word char
+            $s =~ /^([|&!])\s*(.*)?/;   # shortest match to next word char
             $_[0] = $2 ? $2 : "";       # modify the 2nd arg expr in the caller
             return $1;
         }
@@ -714,11 +766,26 @@ sub cond_eval {
     cond_eval_single($conf, $expr);
 }
 
+=item C<append_configure_log($path)>
+
+    $conf->append_configure_log($path)
+
+Adds $path to F<MANIFEST_configure.generated>.
+
+Deprecated, there is no F<MANIFEST_configure.generated> anymore.
+Replaced by C<add_to_generated()>.
+
+=back
+
+=cut
+
 sub append_configure_log {
     my $conf = shift;
     my $target = shift;
     if ( $conf->{active_configuration} ) {
-        my $generated_log = 'MANIFEST.configure.generated';
+        warn "append_configure_log() is DEPRECATED and ignored. Use add_to_generated() instead";
+
+        my $generated_log = 'MANIFEST_configure.generated';
         open my $GEN, '>>', $generated_log
             or die "Can't open $generated_log for appending: $!";
         print $GEN "$target\n";

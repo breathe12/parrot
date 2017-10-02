@@ -180,7 +180,7 @@ plan.
     expect = expect_int
 
     header = '1..'
-    concat header, expect
+    header = concat header, expect
 
     .return( header )
 .end
@@ -209,10 +209,10 @@ plan.
     footer        = ''
 
     if ran == expect goto PLAN_MATCHED
-    concat footer, 'Expected '
-    concat footer, expect_string
-    concat footer, ' but ran '
-    concat footer, ran_string
+    footer = concat footer, 'Expected '
+    footer = concat footer, expect_string
+    footer = concat footer, ' but ran '
+    footer = concat footer, ran_string
 
   PLAN_MATCHED:
     .return( footer )
@@ -235,7 +235,7 @@ plan.
     footer           = "1.."
     tests_run_string = tests_run
 
-    concat footer, tests_run_string
+    footer = concat footer, tests_run_string
     .return( footer )
 .end
 
@@ -243,10 +243,8 @@ plan.
 
 =head1 AUTHOR
 
-Written and maintained by chromatic, C<< chromatic at wgz dot org >>, based on
-the Perl 6 port he wrote, based on the original Perl 5 version he wrote with
-ideas from Michael G. Schwern.  Please send patches, feedback, and suggestions
-to the Perl 6 internals mailing list.
+Please send patches, feedback, and suggestions to the Perl 6 internals mailing
+list.
 
 =head1 COPYRIGHT
 

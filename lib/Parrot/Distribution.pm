@@ -1,4 +1,4 @@
-# Copyright (C) 2004-2010, Parrot Foundation.
+# Copyright (C) 2004-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -45,8 +45,8 @@ Searches up the file system tree from the current working directory
 looking for the distribution directory, and returns it if it finds it.
 The search is only performed once.
 
-The criterion is that there should be a F<README> file beginning with
-the words "This is Parrot" in the directory.
+The criterion is that there should be a F<README.pod> file beginning with
+the words "# Copyright (C) 2001-2014, Parrot Foundation." in the directory.
 
 Raises an exception if the distribution root is not found.
 
@@ -68,12 +68,12 @@ Raises an exception if the distribution root is not found.
     sub _initialize {
         my ($self) = @_;
 
-        my $file = 'README';
+        my $file = 'README.pod';
         my $path = '.';
 
         while ( $self = $self->SUPER::new($path) ) {
             if (    $self->file_exists_with_name($file)
-                and $self->file_with_name($file)->read =~ m/^This is Parrot/os )
+                and $self->file_with_name($file)->read =~ m/^\# Copyright \(C\) 2001-2014, Parrot Foundation\./s )
             {
                 $dist = $self;
                 last;
@@ -133,12 +133,6 @@ BEGIN {
 
 =over 4
 
-=item C<is_svn_co()>
-
-=item C<is_git_co()>
-
-Check the type of checkout.
-
 =item C<c_header_file_directories()>
 
 =item C<c_source_file_directories()>
@@ -152,6 +146,10 @@ Check the type of checkout.
 =item C<pir_source_file_directories()>
 
 =item C<pmc_source_file_directories()>
+
+=item C<pod_source_file_directories()()>
+
+=item C<python_source_file_directories()>
 
 =item C<yacc_source_file_directories()>
 
@@ -171,6 +169,10 @@ Returns the directories which contain source files of the appropriate filetype.
 
 =item C<pmc_source_file_with_name()>
 
+=item C<pod_source_file_with_name()()>
+
+=item C<python_source_file_with_name()>
+
 =item C<yacc_source_file_with_name()>
 
 Returns the source file with the specified name and of the appropriate filetype.
@@ -188,6 +190,10 @@ Returns the source file with the specified name and of the appropriate filetype.
 =item C<pir_source_files()>
 
 =item C<pmc_source_files()>
+
+=item C<pod_source_files()>
+
+=item C<python_source_files()>
 
 =item C<yacc_source_files()>
 
@@ -208,11 +214,13 @@ BEGIN {
                 except_dirs => [qw{ examples/library }],
             },
             yacc => { file_exts => ['y'] },
+            pod  => { file_exts => ['pod'] },
             perl => {
                 file_exts   => [ 'pl', 'pm', 't' ],
                 shebang     => qr/^#!\s*perl/,
-                shebang_ext => qr/.t$/,
+                shebang_ext => qr/\.t$/,
             },
+            python => { file_exts => ['py'] },
         },
         header => { c => { file_exts => ['h'] }, },
     );
@@ -300,24 +308,18 @@ BEGIN {
     }
 }
 
-=item C<is_svn_co()>
+=item C<get_all_files()>
 
-Returns true if this is a subversion checkout of Parrot.
-
-=cut
-
-sub is_svn_co {
-    return shift->directory_exists_with_name('.svn');
-}
-
-=item C<is_git_co()>
-
-Returns true if this is a git checkout of Parrot.
+Returns all the files in the distro.
 
 =cut
 
-sub is_git_co {
-    return shift->directory_exists_with_name('.git');
+sub get_all_files {
+    my ($self) = @_;
+
+    return sort
+        map  { $self->file_with_name($_) }
+        $self->_dist_files;
 }
 
 =item C<get_make_language_files()>
@@ -397,10 +399,6 @@ This is to exclude automatically generated C-language files Parrot might have.
         my ( $self, $file ) = @_;
 
         push @exemptions => map { File::Spec->canonpath($_) } qw{
-            config/auto/cpu/i386/memcpy_mmx.c
-            config/auto/cpu/i386/memcpy_mmx_in.c
-            config/auto/cpu/i386/memcpy_sse.c
-            config/auto/cpu/i386/memcpy_sse_in.c
             config/gen/config_h/feature_h.in
             compilers/imcc/imclexer.c
             compilers/imcc/imcparser.c
@@ -412,6 +410,17 @@ This is to exclude automatically generated C-language files Parrot might have.
             include/parrot/opsenum.h
             src/gc/malloc.c
             src/ops/core_ops.c
+            t/tools/dev/headerizer/testlib/fixedbooleanarray_pmc.in
+            t/tools/dev/headerizer/testlib/function_decls.in
+            t/tools/dev/headerizer/testlib/hvalidheader.in
+            t/tools/dev/headerizer/testlib/imcc.in
+            t/tools/dev/headerizer/testlib/lack_directive.in
+            t/tools/dev/headerizer/testlib/list.in
+            t/tools/dev/headerizer/testlib/list_h.in
+            t/tools/dev/headerizer/testlib/missingheaderfile.in
+            t/tools/dev/headerizer/testlib/nci_pmc.in
+            t/tools/dev/headerizer/testlib/none.in
+            t/tools/dev/headerizer/testlib/validheader.in
             } unless @exemptions;
 
         my $path = -f $file ? $file : $file->path;
@@ -526,7 +535,8 @@ sub is_perl {
     open my $file_handle, '<', $filename
         or $self->_croak("Could not open $filename for reading");
     my $line = <$file_handle>;
-    close $file_handle;
+    close $file_handle
+        or $self->_croak("Could not close $filename after reading");
 
     return 1 if $line && $line =~ /^#!.*perl/;
 
@@ -594,7 +604,8 @@ sub is_pir {
     open my $file_handle, '<', $filename
         or $self->_croak("Could not open $filename for reading");
     my $line = <$file_handle>;
-    close $file_handle;
+    close $file_handle
+        or $self->_croak("Could not close $filename for reading");
 
     if ( $line && $line =~ /^#!.*parrot(?:\s|$)/ ) {
         # something that specifies a pir or pbc is probably a HLL, skip it
@@ -655,7 +666,7 @@ sub perl_script_file_with_name {
     my $self = shift;
     my $name = shift || return;
 
-    $name .= '.pl' unless $name =~ /\.pl$/o;
+    $name .= '.pl' unless $name =~ /\.pl$/;
 
     foreach my $dir ( $self->perl_script_file_directories ) {
         return $dir->file_with_name($name)
@@ -679,8 +690,8 @@ sub perl_module_file_directories {
     return
         map $self->directory_with_name($_) =>
         map( "config/$_" => qw<auto auto/cpu/i386 auto/cpu/ppc
-            auto/cpu/sun4 auto/cpu/x86_64
-            gen gen/cpu/i386 gen/cpu/x86_64 init init/hints inter> ),
+            auto/cpu/sun4 auto/cpu/amd64
+            gen gen/cpu/i386 gen/cpu/amd64 init init/hints inter> ),
         'ext/Parrot-Embed/lib/Parrot',
         map( "lib/$_" => qw<
             Class Digest/Perl File Parrot Parse Pod Pod/Simple Test Text
@@ -702,7 +713,7 @@ sub perl_module_file_with_name {
     my $self = shift;
     my $name = shift || return;
 
-    $name .= '.pm' unless $name =~ /\.pm$/o;
+    $name .= '.pm' unless $name =~ /\.pm$/;
 
     foreach my $dir ( $self->perl_module_file_directories ) {
         return $dir->file_with_name($name)
@@ -711,6 +722,36 @@ sub perl_module_file_with_name {
 
     print 'WARNING: ' . __FILE__ . ':' . __LINE__ . ' File not found:' . $name . "\n";
 
+    return;
+}
+
+=item C<get_python_language_files()>
+
+Returns the Python language source files within Parrot.
+
+At the current time, these files are limited to examples and tools that are
+useful to Parrot developers.
+
+Returns a list of Parrot::Docs::File objects.
+
+=cut
+
+sub get_python_language_files {
+    my $self = shift;
+
+    my @files = ( $self->python_source_files,);
+
+    my @python_language_files = ();
+    foreach my $file (@files) {
+        next if $self->is_python_exemption($file);
+        push @python_language_files, $file;
+    }
+
+    return @python_language_files;
+}
+
+sub is_python_exemption {
+    my ($self, $file) = @_;
     return;
 }
 
@@ -738,18 +779,6 @@ sub html_docs_directory {
     return $self->docs_directory->directory_with_name('html');
 }
 
-=item C<delete_html_docs()>
-
-Deletes the HTML documentation directory.
-
-=cut
-
-sub delete_html_docs {
-    my $self = shift;
-
-    return $self->html_docs_directory->delete();
-}
-
 =item C<generated_files>
 
 Returns a hash where the keys are the files in F<MANIFEST.generated> and the
@@ -765,7 +794,7 @@ sub generated_files {
 
     return {
         map { File::Spec->catfile( $path, $_ ) => $generated->{$_} }
-            keys %$generated
+            keys %{$generated}
     };
 }
 
@@ -787,10 +816,14 @@ sub slurp {
         local $/;
         $buf = <$fh>;
     }
-    close $fh;
+    close $fh or die "Cannot close $path after reading: $!\n";
 
     return $buf;
 }
+
+=back
+
+=cut
 
 1;
 

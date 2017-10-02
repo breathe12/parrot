@@ -142,7 +142,7 @@ EOF
     pir_output_is( <<'CODE', <<'OUTPUT', ":anon subs still get default namespace" );
 .HLL 'cromulent'
 
-.sub what
+.sub what :main
    load_bytecode 'temp_a.pir'
   .local pmc var
    var = get_root_namespace
@@ -793,10 +793,6 @@ pir_output_like( <<'CODE', <<'OUTPUT', 'add_sub() with error' );
     root_ns.'add_sub'( 'coroutine', child )
     print "Added coroutine\n"
 
-    child = new ['Eval']
-    root_ns.'add_sub'( 'eval', child )
-    print "Added eval\n"
-
     .local pmc not_a_sub
     not_a_sub = new ['Integer']
 
@@ -816,7 +812,6 @@ _invalid_sub:
 CODE
 /Added sub child
 Added coroutine
-Added eval
 Invalid type \d+ in add_sub\(\)/
 OUTPUT
 
@@ -1251,7 +1246,7 @@ Could not find sub nok/
 OUT
 
 
-pir_output_is( <<'CODE', <<'OUT', 'HLL_map on namespace', todo => 'TT #867');
+pir_output_is( <<'CODE', <<'OUT', 'HLL_map on namespace', todo => 'GH #404');
 .HLL 'tcl'
 
 .sub 'foo' :anon :init

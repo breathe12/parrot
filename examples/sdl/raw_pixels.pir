@@ -1,5 +1,5 @@
 
-=head1 TITLE
+=head1 DESCRIPTION
 
 raw_pixels.pir - paint the screen blue, pixel by pixel
 
@@ -90,10 +90,6 @@ loop_end:
 
 	end
 .end
-
-=head1 AUTHOR
-
-chromatic, E<lt>chromatic at wgz dot orgE<gt>.
 
 =head1 COPYRIGHT
 

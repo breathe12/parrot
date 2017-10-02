@@ -1,4 +1,4 @@
-# Copyright (C) 2009, Parrot Foundation.
+# Copyright (C) 2009-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -53,6 +53,19 @@ our %second_analysis_subs = (
                     next SECOND_FILE;
                 }
 
+                # skip 'docs/pdds' and 'docs/pdds/draft' for two reasons:
+                #
+                # (1) 'pdds' have their own, specific format requirements and
+                #     (See 'docs/pdds/pdd00_pdd.pod' and see
+                #      'docs/pdds/pdd_template.pod'.)
+                # (2) we already test the POD in 'pdds' in
+                #     't/codingstd/pdd_format.t'
+                if ($full_file =~ m{docs/pdds/} or
+                    $full_file =~ m{docs/pdds/draft}) {
+                    delete $files_needing_analysis->{ $file };
+                    next SECOND_FILE;
+                }
+
                 # skip POD generating scripts
                 if ($full_file =~ m/ops_summary\.pl/) {
                     delete $files_needing_analysis->{ $file };
@@ -62,16 +75,19 @@ our %second_analysis_subs = (
                 # skip file which includes malformed POD for
                 # other testing purposes
                 if ($full_file =~ m{
-                        t/tools/dev/searchops/samples\.pm
+                        t/tools/dev/search_ops/samples\.pm
                         | languages/pod/test\.pod
                         | examples/config/file/configcompiler
-                        | t/configure/testlib/verbosefoobar
+                        | examples/config/file/configwithfatalstep
+                        | examples/config/file/configverbose
                         | t/configure/testlib/ddefectivefoobar
                         | t/configure/testlib/adefectivefoobar
                         | t/configure/testlib/cdefectivefoobar
                         | t/configure/testlib/bdefectivefoobar
-                        | examples/config/file/configwithfatalstep
                         | compilers/opsc
+                        | tools/dev/mk_language_shell\.pl
+                        | src/string/namealias_c\.in
+                        | lib/IO/CaptureOutput\.pm
                     }x
                 ) {
                     delete $files_needing_analysis->{ $file };
@@ -113,6 +129,10 @@ our %second_analysis_subs = (
                     delete $files_needing_analysis->{ $file };
                     next SECOND_FILE;
                 }
+                if ($full_file =~ m{(?:docs/pdds/|docs/dev/pmc).*\.pod$}) {
+                    delete $files_needing_analysis->{ $file };
+                    next SECOND_FILE;
+                }
                 if (no_pod_todo($full_file)) {
                     delete $files_needing_analysis->{ $file };
                     next SECOND_FILE;
@@ -130,7 +150,7 @@ our %second_analysis_subs = (
 
 B<Purpose:>  Parrot::Test::Pod constructor.
 
-B<Arguments:>  Hash reference holding, at a minimum, one elemente keyed by
+B<Arguments:>  Hash reference holding, at a minimum, one element keyed by
 C<argv>, whose value is typically a reference to C<@ARGV>.
 
 B<Return Value:>  Parrot::Test::Pod object.
@@ -263,7 +283,7 @@ sub identify_files_for_POD_testing {
         }
     }
 
-    return [ keys %{ $files_needing_analysis } ];
+    return [ sort keys %{ $files_needing_analysis } ];
 }
 
 =head2 C<oreilly_summary_malformed()>
@@ -310,12 +330,6 @@ results of the first pass minus the results of the second pass.
 
 =cut
 
-=head1 AUTHOR
-
-James E Keenan, refactored from earlier code
-
-=cut
-
 # Pulled from Test::Pod
 sub no_pod_todo {
     my $file    = shift;
@@ -323,7 +337,9 @@ sub no_pod_todo {
 
     my $text;
     $checker->output_string( \$text );
-    $checker->parse_file($file);
+    # Some pods are not parsable. They fail in Text::Wrap in overlong links
+    eval { $checker->parse_file($file); };
+    return 1 if $@;
 
     # if the text contains todo items return false
     if ( $text =~ m/TODO|FIXME|XXX/ ) {

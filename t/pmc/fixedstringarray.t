@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -18,7 +18,7 @@ out-of-bounds test. Checks INT and PMC keys.
 
 .sub 'main' :main
     .include 'test_more.pir'
-    plan(50)
+    plan(51)
 
     test_set_size()
     test_reset_size()
@@ -35,10 +35,10 @@ out-of-bounds test. Checks INT and PMC keys.
     test_freez_thaw()
     test_get_string()
     test_equality()
-    test_gc()
     test_number()
     test_new_style_init()
     test_invalid_init_tt1509()
+    test_gc()
 .end
 
 .sub 'test_set_size'
@@ -115,12 +115,19 @@ out-of-bounds test. Checks INT and PMC keys.
     pop_eh
 
     $I0 = 1
-    push_eh handle_set_negative
-    $P0[-42] = 7
+    push_eh handle_get1
+    $I1 = $P0[-42]
     $I0 = 0
-  handle_set_negative:
-    ok($I0, "Can't set element on negative index")
+  handle_get1:
+    ok($I0, "Can't get negative out-of-bounds element")
     pop_eh
+
+    $I0 = $P0[-1]
+    ok(1, "Can get element on negative index")
+
+    $P0[-1] = ""
+    $S0 = $P0[-1]
+    is($S0, "", "Can set element on negative index")
 
     $I0 = 1
     push_eh handle_get
@@ -128,14 +135,6 @@ out-of-bounds test. Checks INT and PMC keys.
     $I0 = 0
   handle_get:
     ok($I0, "Can't get out-of-bounds element")
-    pop_eh
-
-    $I0 = 1
-    push_eh handle_get_negative
-    $I1 = $P0[-1]
-    $I0 = 0
-  handle_get_negative:
-    ok($I0, "Can't get element with negative index")
     pop_eh
 
 .end
@@ -260,27 +259,6 @@ out-of-bounds test. Checks INT and PMC keys.
     ok($P0, "Non-empty array is true")
 .end
 
-.sub 'test_gc'
-    $P0 = new ['FixedStringArray']
-    $P0 = 8192
-
-    $I0 = 0
-  loop:
-    $P0[$I0] = $I0
-    inc $I0
-    sweep 1
-    if $I0 < 8192 goto loop
-
-    $S0 = $P0[1000]
-    is($S0, "1000", "1000th element survived")
-    $S0 = $P0[2000]
-    is($S0, "2000", "2000th element survived")
-    $S0 = $P0[4000]
-    is($S0, "4000", "4000th element survived")
-    $S0 = $P0[8000]
-    is($S0, "8000", "8000th element survived")
-.end
-
 .sub 'test_get_iter'
     $P0 = new ['FixedStringArray']
     $P0 = 3
@@ -292,7 +270,7 @@ out-of-bounds test. Checks INT and PMC keys.
   loop:
     unless $P1 goto loop_end
     $S2 = shift $P1
-    concat $S0, $S2
+    $S0 = concat $S0, $S2
     goto loop
   loop_end:
     is($S0, "foobarbaz", "Iteration works")
@@ -318,7 +296,7 @@ out-of-bounds test. Checks INT and PMC keys.
   loop:
     unless it goto loop_end
     s = shift it
-    concat $S0, s
+    $S0 = concat $S0, s
     goto loop
   loop_end:
     is($S0, "42434499101", "get_iter works")
@@ -365,7 +343,6 @@ out-of-bounds test. Checks INT and PMC keys.
     isnt(a1, a2, "Not equal when second element is null")
 .end
 
-
 .sub 'test_number'
     .local pmc fsa
     fsa = new ['FixedStringArray']
@@ -390,17 +367,38 @@ out-of-bounds test. Checks INT and PMC keys.
 .end
 
 .sub test_invalid_init_tt1509
-    throws_substring(<<'CODE', 'FixedStringArray: Cannot set array size to a negative number (-10)', 'New style init does not dump core for negative array lengths')
-    .sub main
+    throws_substring(<<'CODE', 'illegal argument', 'New style init does not dump core for negative array lengths')
+    .sub main :main
         $P0 = new ['FixedStringArray'], -10
     .end
 CODE
 
-    throws_substring(<<'CODE', 'FixedStringArray: Cannot set array size to a negative number (-10)', 'New style init (key constant) does not dump core for negative array lengths')
-    .sub main
+    throws_substring(<<'CODE', 'illegal argument', 'New style init (key constant) does not dump core for negative array lengths')
+    .sub main :main
         $P0 = new 'FixedStringArray', -10
     .end
 CODE
+.end
+
+.sub 'test_gc'
+    $P0 = new ['FixedStringArray']
+    $P0 = 8192
+
+    $I0 = 0
+  loop:
+    $P0[$I0] = $I0
+    inc $I0
+    sweep 1
+    if $I0 < 8192 goto loop
+
+    $S0 = $P0[1000]
+    is($S0, "1000", "1000th element survived")
+    $S0 = $P0[2000]
+    is($S0, "2000", "2000th element survived")
+    $S0 = $P0[4000]
+    is($S0, "4000", "4000th element survived")
+    $S0 = $P0[8000]
+    is($S0, "8000", "8000th element survived")
 .end
 
 # Local Variables:

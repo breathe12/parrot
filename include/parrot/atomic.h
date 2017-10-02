@@ -1,11 +1,7 @@
 /* atomic.h
- *  Copyright (C) 2006-2008, Parrot Foundation.
- *  Overview:
- *     This header implements portable atomic operations.
- *  Data Structure and Algorithms:
- *  History:
- *  Notes:
- *  References:
+ * Copyright (C) 2006-2015, Parrot Foundation.
+ *
+ * This header implements portable atomic operations.
  */
 
 
@@ -13,19 +9,19 @@
 #define PARROT_ATOMIC_H_GUARD
 
 #  include "parrot/has_header.h"
-#  include "parrot/thread.h"
 
 #ifdef PARROT_HAS_THREADS
 #  if defined(PARROT_HAS_I386_GCC_CMPXCHG)
 #    include "parrot/atomic/gcc_x86.h"
 #  elif defined(PARROT_HAS_PPC_GCC_CMPSET)
-#    include "parrot/atomic/gcc_pcc.h"
+#    include "parrot/atomic/gcc_ppc.h"
 #  elif defined(PARROT_HAS_SPARC_ATOMIC)
 #    include "parrot/atomic/sparc.h"
 #  else
 #    include "parrot/atomic/fallback.h"
 #  endif
 #else
+
 typedef struct Parrot_atomic_pointer {
     void *val;
 } Parrot_atomic_pointer;
@@ -47,9 +43,9 @@ typedef struct Parrot_atomic_integer {
 #  define PARROT_ATOMIC_PTR_CAS(result, a, expect, update) \
       do { \
           void * orig; \
-          PARROT_ATOMIC_PTR_GET((a), orig); \
+          PARROT_ATOMIC_PTR_GET(orig, (a)); \
           if ((expect) == (orig)) { \
-              ATOMIC_SET((a), (update)); \
+              PARROT_ATOMIC_PTR_SET((a), (update)); \
               (result) = 1; \
           } \
           else { \
@@ -64,9 +60,9 @@ typedef struct Parrot_atomic_integer {
 #  define PARROT_ATOMIC_INT_CAS(result, a, expect, update) \
       do { \
           INTVAL orig; \
-          PARROT_ATOMIC_PTR_GET((a), (orig)); \
+          PARROT_ATOMIC_INT_GET(orig, (a)); \
           if ((expect) == (orig)) { \
-              ATOMIC_SET((a), (update)); \
+              PARROT_ATOMIC_INT_SET((a), (update)); \
               (result) = 1; \
           } \
           else { \

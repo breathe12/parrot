@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2009-2010, Parrot Foundation.
+Copyright (C) 2009-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -17,6 +17,8 @@ Parrot_Context functions.
 #include "parrot/call.h"
 #include "pmc/pmc_sub.h"
 #include "pmc/pmc_callcontext.h"
+#include "pmc/pmc_continuation.h"
+#include "pmc/pmc_proxy.h"
 
 /*
 
@@ -74,7 +76,9 @@ static void allocate_registers(PARROT_INTERP,
         __attribute__nonnull__(2)
         __attribute__nonnull__(3);
 
-static size_t calculate_registers_size(SHIM_INTERP,
+PARROT_WARN_UNUSED_RESULT
+PARROT_PURE_FUNCTION
+static size_t calculate_registers_size(PARROT_INTERP,
     ARGIN(const UINTVAL *number_regs_used))
         __attribute__nonnull__(2);
 
@@ -83,15 +87,19 @@ static void clear_regs(PARROT_INTERP, ARGMOD(Parrot_Context *ctx))
         __attribute__nonnull__(2)
         FUNC_MODIFIES(*ctx);
 
-static void init_context(PARROT_INTERP,
-    ARGMOD(PMC *pmcctx),
-    ARGIN_NULLOK(PMC *pmcold))
+PARROT_CANNOT_RETURN_NULL
+static PMC* init_context(ARGMOD(PMC *pmcctx), ARGIN_NULLOK(PMC *pmcold))
         __attribute__nonnull__(1)
-        __attribute__nonnull__(2)
         FUNC_MODIFIES(*pmcctx);
 
+PARROT_WARN_UNUSED_RESULT
+PARROT_PURE_FUNCTION
 static size_t Parrot_pcc_calculate_registers_size(PARROT_INTERP,
     ARGIN(const UINTVAL *number_regs_used))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2);
+
+static void set_context(PARROT_INTERP, ARGIN(PMC *ctx))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
@@ -105,12 +113,14 @@ static size_t Parrot_pcc_calculate_registers_size(PARROT_INTERP,
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(ctx))
 #define ASSERT_ARGS_init_context __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(pmcctx))
+       PARROT_ASSERT_ARG(pmcctx))
 #define ASSERT_ARGS_Parrot_pcc_calculate_registers_size \
      __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(number_regs_used))
+#define ASSERT_ARGS_set_context __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(ctx))
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 /* HEADERIZER END: static */
 
@@ -133,7 +143,7 @@ PARROT_EXPORT
 PARROT_PURE_FUNCTION
 PARROT_CAN_RETURN_NULL
 PMC*
-Parrot_pcc_get_sub(PARROT_INTERP, ARGIN(const PMC *ctx))
+Parrot_pcc_get_sub(SHIM_INTERP, ARGIN(const PMC *ctx))
 {
     ASSERT_ARGS(Parrot_pcc_get_sub)
     const Parrot_Context * const c = CONTEXT_STRUCT(ctx);
@@ -166,6 +176,12 @@ Parrot_pcc_set_sub(PARROT_INTERP, ARGIN(PMC *ctx), ARGIN_NULLOK(PMC *sub))
 
         c->current_pc        = subattr->seg->base.data + subattr->start_offs;
         c->current_HLL       = subattr->HLL_id;
+#ifdef THREAD_DEBUG
+        PARROT_ASSERT(
+            PObj_is_shared_TEST(sub)
+            || subattr->namespace_stash == NULL
+            || subattr->namespace_stash->orig_interp == interp);
+#endif
         c->current_namespace = subattr->namespace_stash;
     }
 }
@@ -191,68 +207,31 @@ void
 create_initial_context(PARROT_INTERP)
 {
     ASSERT_ARGS(create_initial_context)
-    static UINTVAL   num_regs[] = {32, 32, 32, 32};
-    PMC *ignored;
+    static const UINTVAL num_regs[] = {32, 32, 32, 32};
 
     /* Create some initial free_list slots. */
-
 #define INITIAL_FREE_SLOTS 8
+
     /* For now create context with 32 regs each. Some src tests (and maybe
      * other extenders) assume the presence of these registers */
-    ignored = Parrot_set_new_context(interp, num_regs);
-    UNUSED(ignored);
+    PMC * const ctx = Parrot_set_new_context(interp, num_regs);
+    if (!ctx)
+        Parrot_x_panic_and_exit(interp, "Out of mem", __FILE__, __LINE__);
 }
 
 /*
 
-=item C<static void clear_regs(PARROT_INTERP, Parrot_Context *ctx)>
+=item C<static PMC* init_context(PMC *pmcctx, PMC *pmcold)>
 
-Clears all registers in a context.  PMC and STRING registers contain PMCNULL
-and NULL, respectively.  Integer and float registers contain negative flag
-values, for debugging purposes.
+Initializes a freshly allocated or recycled context and returns the new one.
 
 =cut
 
 */
 
-static void
-clear_regs(PARROT_INTERP, ARGMOD(Parrot_Context *ctx))
-{
-    ASSERT_ARGS(clear_regs)
-    UINTVAL       i;
-    const UINTVAL s_regs = ctx->n_regs_used[REGNO_STR];
-    const UINTVAL p_regs = ctx->n_regs_used[REGNO_PMC];
-
-    /* NULL out registers - P/S have to be NULL for GC */
-    for (i = 0; i < s_regs; ++i)
-        ctx->bp_ps.regs_s[i] = STRINGNULL;
-
-    for (i = 0; i < p_regs; ++i)
-        ctx->bp_ps.regs_p[-1L - i] = PMCNULL;
-
-    if (Interp_debug_TEST(interp, PARROT_REG_DEBUG_FLAG)) {
-        /* depending on -D40, set int and num to identifiable garbage values */
-        for (i = 0; i < ctx->n_regs_used[REGNO_INT]; ++i)
-            ctx->bp.regs_i[i] = -999;
-
-        for (i = 0; i < ctx->n_regs_used[REGNO_NUM]; ++i)
-            ctx->bp.regs_n[-1L - i] = -99.9;
-    }
-}
-
-
-/*
-
-=item C<static void init_context(PARROT_INTERP, PMC *pmcctx, PMC *pmcold)>
-
-Initializes a freshly allocated or recycled context.
-
-=cut
-
-*/
-
-static void
-init_context(PARROT_INTERP, ARGMOD(PMC *pmcctx), ARGIN_NULLOK(PMC *pmcold))
+PARROT_CANNOT_RETURN_NULL
+static PMC*
+init_context(ARGMOD(PMC *pmcctx), ARGIN_NULLOK(PMC *pmcold))
 {
     ASSERT_ARGS(init_context)
     Parrot_Context * const ctx = CONTEXT_STRUCT(pmcctx);
@@ -265,13 +244,12 @@ init_context(PARROT_INTERP, ARGMOD(PMC *pmcctx), ARGIN_NULLOK(PMC *pmcold))
      * FIXME Invoking corotine shouldn't initialise context. So just
      * check ctx->current_sub. If it's not null return from here
      */
-    if (!PMC_IS_NULL(ctx->current_sub))
-        return;
+    if (LIKELY(!PMC_IS_NULL(ctx->current_sub)))
+        return pmcctx;
 
     ctx->lex_pad           = PMCNULL;
     ctx->outer_ctx         = NULL;
     ctx->current_cont      = NULL;
-    ctx->current_object    = NULL;
     ctx->handlers          = PMCNULL;
     ctx->caller_ctx        = NULL;
     ctx->current_sig       = PMCNULL;
@@ -298,11 +276,14 @@ init_context(PARROT_INTERP, ARGMOD(PMC *pmcctx), ARGIN_NULLOK(PMC *pmcold))
         ctx->errors            = old->errors;
         ctx->trace_flags       = old->trace_flags;
         ctx->current_HLL       = old->current_HLL;
+        PARROT_ASSERT_INTERP(old->current_namespace, pmcctx->orig_interp);
         ctx->current_namespace = old->current_namespace;
         /* end COW */
         ctx->recursion_depth   = old->recursion_depth;
         ctx->caller_ctx        = pmcold;
     }
+
+    return pmcctx;
 }
 
 
@@ -355,7 +336,7 @@ Parrot_pop_context(PARROT_INTERP)
     PMC * const old = Parrot_pcc_get_caller_ctx(interp, ctx);
 
     /* restore old, set cached interpreter base pointers */
-    CURRENT_CONTEXT(interp) = old;
+    set_context(interp, old);
 }
 
 /*
@@ -368,6 +349,9 @@ Calculate memory size required for registers.
 =cut
 
 */
+
+PARROT_WARN_UNUSED_RESULT
+PARROT_PURE_FUNCTION
 static size_t
 calculate_registers_size(SHIM_INTERP, ARGIN(const UINTVAL *number_regs_used))
 {
@@ -392,6 +376,8 @@ Calculate size of Context.
 
 */
 
+PARROT_WARN_UNUSED_RESULT
+PARROT_PURE_FUNCTION
 static size_t
 Parrot_pcc_calculate_registers_size(PARROT_INTERP, ARGIN(const UINTVAL *number_regs_used))
 {
@@ -424,15 +410,17 @@ allocate_registers(PARROT_INTERP, ARGIN(PMC *pmcctx), ARGIN(const UINTVAL *numbe
     const size_t all_regs_size = size_n + size_i + size_p + size_s;
     const size_t reg_alloc     = ROUND_ALLOC_SIZE(all_regs_size);
 
-    /* don't allocate any storage if there are no registers */
-    ctx->registers = reg_alloc
-        ? (Parrot_Context *)Parrot_gc_allocate_fixed_size_storage(interp, reg_alloc)
-        : NULL;
-
     ctx->n_regs_used[REGNO_INT] = number_regs_used[REGNO_INT];
     ctx->n_regs_used[REGNO_NUM] = number_regs_used[REGNO_NUM];
     ctx->n_regs_used[REGNO_STR] = number_regs_used[REGNO_STR];
     ctx->n_regs_used[REGNO_PMC] = number_regs_used[REGNO_PMC];
+
+    if (!reg_alloc) {
+        ctx->registers = NULL;
+        return;
+    }
+    /* don't allocate any storage if there are no registers */
+    ctx->registers = (Parrot_Context *)Parrot_gc_allocate_fixed_size_storage(interp, reg_alloc);
 
     /* ctx.bp points to I0, which has Nx on the left */
     ctx->bp.regs_i = (INTVAL *)((char *)ctx->registers + size_n);
@@ -441,6 +429,44 @@ allocate_registers(PARROT_INTERP, ARGIN(PMC *pmcctx), ARGIN(const UINTVAL *numbe
     ctx->bp_ps.regs_s = (STRING **)((char *)ctx->registers + size_nip);
 
     clear_regs(interp, ctx);
+}
+
+
+/*
+
+=item C<static void clear_regs(PARROT_INTERP, Parrot_Context *ctx)>
+
+Clears all registers in a context.  PMC and STRING registers contain PMCNULL
+and NULL, respectively.  Integer and float registers contain negative flag
+values, for debugging purposes.
+
+=cut
+
+*/
+
+static void
+clear_regs(PARROT_INTERP, ARGMOD(Parrot_Context *ctx))
+{
+    ASSERT_ARGS(clear_regs)
+    UINTVAL       i;
+    const UINTVAL s_regs = ctx->n_regs_used[REGNO_STR];
+    const UINTVAL p_regs = ctx->n_regs_used[REGNO_PMC];
+
+    /* NULL out registers - P/S have to be NULL for GC */
+    for (i = 0; i < s_regs; ++i)
+        ctx->bp_ps.regs_s[i] = STRINGNULL;
+
+    for (i = 0; i < p_regs; ++i)
+        ctx->bp_ps.regs_p[-1L - i] = PMCNULL;
+
+    if (Interp_debug_TEST(interp, PARROT_REG_DEBUG_FLAG)) {
+        /* depending on -D40, set int and num to identifiable garbage values */
+        for (i = 0; i < ctx->n_regs_used[REGNO_INT]; ++i)
+            ctx->bp.regs_i[i] = -999;
+
+        for (i = 0; i < ctx->n_regs_used[REGNO_NUM]; ++i)
+            ctx->bp.regs_n[-1L - i] = -99.9;
+    }
 }
 
 
@@ -518,9 +544,7 @@ Parrot_alloc_context(PARROT_INTERP, ARGIN(const UINTVAL *number_regs_used),
     PMC * const pmcctx = Parrot_pmc_new(interp, enum_class_CallContext);
 
     allocate_registers(interp, pmcctx, number_regs_used);
-    init_context(interp, pmcctx, old);
-
-    return pmcctx;
+    return init_context(pmcctx, old);
 }
 
 
@@ -543,9 +567,7 @@ Parrot_pcc_allocate_empty_context(PARROT_INTERP, ARGIN_NULLOK(PMC *old))
     ASSERT_ARGS(Parrot_pcc_allocate_empty_context)
     PMC * const pmcctx = Parrot_pmc_new(interp, enum_class_CallContext);
 
-    init_context(interp, pmcctx, old);
-
-    return pmcctx;
+    return init_context(pmcctx, old);
 }
 
 /*
@@ -560,13 +582,11 @@ Initialise new context from old.
 
 PARROT_CANNOT_RETURN_NULL
 PMC *
-Parrot_pcc_init_context(PARROT_INTERP, ARGIN(PMC *ctx), ARGIN_NULLOK(PMC *old))
+Parrot_pcc_init_context(SHIM_INTERP, ARGIN(PMC *ctx), ARGIN_NULLOK(PMC *old))
 {
     ASSERT_ARGS(Parrot_pcc_init_context)
 
-    init_context(interp, ctx, old);
-
-    return ctx;
+    return init_context(ctx, old);
 }
 
 /*
@@ -587,10 +607,10 @@ PMC *
 Parrot_set_new_context(PARROT_INTERP, ARGIN(const UINTVAL *number_regs_used))
 {
     ASSERT_ARGS(Parrot_set_new_context)
-    PMC *old = CURRENT_CONTEXT(interp);
-    PMC *ctx = Parrot_alloc_context(interp, number_regs_used, old);
+    PMC * const old = CURRENT_CONTEXT(interp);
+    PMC * const ctx = Parrot_alloc_context(interp, number_regs_used, old);
 
-    CURRENT_CONTEXT(interp) = ctx;
+    set_context(interp, ctx);
 
     return ctx;
 }
@@ -611,6 +631,12 @@ UINTVAL idx)>
 
 Get pointer to INTVAL register.
 
+Notice that this pointer IS NOT intended for long term use. This pointer is
+tied to the lifetime of the Context, and if the Context is destroyed the
+memory for the registers will be freed and possibly even recycled. This
+pointer should be used for an immediate set or fetch and should not be
+cached.
+
 =cut
 
 */
@@ -622,7 +648,10 @@ INTVAL *
 Parrot_pcc_get_INTVAL_reg(PARROT_INTERP, ARGIN(const PMC *ctx), UINTVAL idx)
 {
     ASSERT_ARGS(Parrot_pcc_get_INTVAL_reg)
-    PARROT_ASSERT(Parrot_pcc_get_regs_used(interp, ctx, REGNO_INT) > idx);
+#ifdef NDEBUG
+    UNUSED(interp)
+#endif
+    PARROT_ASSERT(PCC_GET_REGS_USED(ctx, REGNO_INT) > idx);
     return &(CONTEXT_STRUCT(ctx)->bp.regs_i[idx]);
 }
 
@@ -632,6 +661,12 @@ Parrot_pcc_get_INTVAL_reg(PARROT_INTERP, ARGIN(const PMC *ctx), UINTVAL idx)
 UINTVAL idx)>
 
 Get pointer to FLOATVAL register.
+
+Notice that this pointer IS NOT intended for long term use. This pointer is
+tied to the lifetime of the Context, and if the Context is destroyed the
+memory for the registers will be freed and possibly even recycled. This
+pointer should be used for an immediate set or fetch and should not be
+cached.
 
 =cut
 
@@ -644,7 +679,10 @@ FLOATVAL *
 Parrot_pcc_get_FLOATVAL_reg(PARROT_INTERP, ARGIN(const PMC *ctx), UINTVAL idx)
 {
     ASSERT_ARGS(Parrot_pcc_get_FLOATVAL_reg)
-    PARROT_ASSERT(Parrot_pcc_get_regs_used(interp, ctx, REGNO_NUM) > idx);
+#ifdef NDEBUG
+    UNUSED(interp)
+#endif
+    PARROT_ASSERT(PCC_GET_REGS_USED(ctx, REGNO_NUM) > idx);
     return &(CONTEXT_STRUCT(ctx)->bp.regs_n[-1L - idx]);
 }
 
@@ -654,6 +692,12 @@ Parrot_pcc_get_FLOATVAL_reg(PARROT_INTERP, ARGIN(const PMC *ctx), UINTVAL idx)
 idx)>
 
 Get pointer to STRING register.
+
+Notice that this pointer IS NOT intended for long term use. This pointer is
+tied to the lifetime of the Context, and if the Context is destroyed the
+memory for the registers will be freed and possibly even recycled. This
+pointer should be used for an immediate set or fetch and should not be
+cached.
 
 =cut
 
@@ -666,7 +710,8 @@ STRING **
 Parrot_pcc_get_STRING_reg(PARROT_INTERP, ARGIN(PMC *ctx), UINTVAL idx)
 {
     ASSERT_ARGS(Parrot_pcc_get_STRING_reg)
-    PARROT_ASSERT(Parrot_pcc_get_regs_used(interp, ctx, REGNO_STR) > idx);
+    PARROT_ASSERT(PCC_GET_REGS_USED(ctx, REGNO_STR) > idx);
+    PARROT_GC_WRITE_BARRIER(interp, ctx);
     return &(CONTEXT_STRUCT(ctx)->bp_ps.regs_s[idx]);
 }
 
@@ -675,6 +720,12 @@ Parrot_pcc_get_STRING_reg(PARROT_INTERP, ARGIN(PMC *ctx), UINTVAL idx)
 =item C<PMC ** Parrot_pcc_get_PMC_reg(PARROT_INTERP, PMC *ctx, UINTVAL idx)>
 
 Get pointer to PMC register.
+
+Notice that this pointer IS NOT intended for long term use. This pointer is
+tied to the lifetime of the Context, and if the Context is destroyed the
+memory for the registers will be freed and possibly even recycled. This
+pointer should be used for an immediate set or fetch and should not be
+cached.
 
 =cut
 
@@ -687,8 +738,12 @@ PMC **
 Parrot_pcc_get_PMC_reg(PARROT_INTERP, ARGIN(PMC *ctx), UINTVAL idx)
 {
     ASSERT_ARGS(Parrot_pcc_get_PMC_reg)
-    PARROT_ASSERT(Parrot_pcc_get_regs_used(interp, ctx, REGNO_PMC) > idx);
-    return &(CONTEXT_STRUCT(ctx)->bp_ps.regs_p[-1L - idx]);
+    PMC **res;
+    PARROT_ASSERT(PCC_GET_REGS_USED(ctx, REGNO_PMC) > idx);
+    PARROT_GC_WRITE_BARRIER(interp, ctx);
+    res = &(CONTEXT_STRUCT(ctx)->bp_ps.regs_p[-1L - idx]);
+    PARROT_ASSERT(!*res || !PObj_on_free_list_TEST(*res));
+    return res;
 }
 
 /*
@@ -701,31 +756,14 @@ Return number of used registers of particular type.
 =cut
 
 */
+
 PARROT_EXPORT
 PARROT_PURE_FUNCTION
 UINTVAL
-Parrot_pcc_get_regs_used(PARROT_INTERP, ARGIN(const PMC *ctx), int type)
+Parrot_pcc_get_regs_used(SHIM_INTERP, ARGIN(const PMC *ctx), int type)
 {
     ASSERT_ARGS(Parrot_pcc_get_regs_used)
-    return CONTEXT_STRUCT(ctx)->n_regs_used[type];
-}
-
-/*
-
-=item C<void Parrot_pcc_set_regs_used(PARROT_INTERP, PMC *ctx, int type, INTVAL
-num)>
-
-Set number of used registers of particular type.
-
-=cut
-
-*/
-PARROT_EXPORT
-void
-Parrot_pcc_set_regs_used(PARROT_INTERP, ARGIN(PMC *ctx), int type, INTVAL num)
-{
-    ASSERT_ARGS(Parrot_pcc_set_regs_used)
-    CONTEXT_STRUCT(ctx)->n_regs_used[type] = num;
+    return PCC_GET_REGS_USED(ctx, type);
 }
 
 /*
@@ -737,11 +775,12 @@ Get pointer to FLOANFAL and INTVAL registers.
 =cut
 
 */
+
 PARROT_EXPORT
 PARROT_PURE_FUNCTION
 PARROT_CANNOT_RETURN_NULL
 Regs_ni*
-Parrot_pcc_get_regs_ni(PARROT_INTERP, ARGIN(const PMC *ctx))
+Parrot_pcc_get_regs_ni(SHIM_INTERP, ARGIN(const PMC *ctx))
 {
     ASSERT_ARGS(Parrot_pcc_get_regs_ni)
     return &(CONTEXT_STRUCT(ctx)->bp);
@@ -756,10 +795,10 @@ Copy Regs_ni into Context.
 =cut
 
 */
+
 PARROT_EXPORT
-PARROT_CANNOT_RETURN_NULL
 void
-Parrot_pcc_set_regs_ni(PARROT_INTERP, ARGIN(PMC *ctx), ARGIN(Regs_ni *bp))
+Parrot_pcc_set_regs_ni(SHIM_INTERP, ARGIN(PMC *ctx), ARGIN(Regs_ni *bp))
 {
     ASSERT_ARGS(Parrot_pcc_set_regs_ni)
     CONTEXT_STRUCT(ctx)->bp = *bp;
@@ -774,11 +813,12 @@ Get pointer to PMC and STRING registers.
 =cut
 
 */
+
 PARROT_EXPORT
 PARROT_PURE_FUNCTION
 PARROT_CANNOT_RETURN_NULL
 Regs_ps*
-Parrot_pcc_get_regs_ps(PARROT_INTERP, ARGIN(PMC *ctx))
+Parrot_pcc_get_regs_ps(SHIM_INTERP, ARGIN(PMC *ctx))
 {
     ASSERT_ARGS(Parrot_pcc_get_regs_ps)
     return &(CONTEXT_STRUCT(ctx)->bp_ps);
@@ -793,15 +833,136 @@ Copy Regs_ps into Context.
 =cut
 
 */
+
 PARROT_EXPORT
-PARROT_CANNOT_RETURN_NULL
 void
-Parrot_pcc_set_regs_ps(PARROT_INTERP, ARGIN(PMC *ctx), ARGIN(Regs_ps *bp_ps))
+Parrot_pcc_set_regs_ps(SHIM_INTERP, ARGIN(PMC *ctx), ARGIN(Regs_ps *bp_ps))
 {
     ASSERT_ARGS(Parrot_pcc_set_regs_ps)
     CONTEXT_STRUCT(ctx)->bp_ps = *bp_ps;
 }
 
+/*
+
+=item C<void Parrot_pcc_set_context_func(PARROT_INTERP, PMC *ctx)>
+
+Set new Context to interpreter.
+
+=cut
+
+*/
+
+PARROT_EXPORT
+void
+Parrot_pcc_set_context_func(PARROT_INTERP, ARGIN(PMC *ctx))
+{
+    ASSERT_ARGS(Parrot_pcc_set_context_func)
+
+    set_context(interp, ctx);
+}
+
+/*
+
+=item C<void Parrot_pcc_reuse_continuation(PARROT_INTERP, PMC *call_context,
+opcode_t *next)>
+
+Try to reuse old Continuation for subsequent calls from same CallContext.
+
+=cut
+
+*/
+
+PARROT_EXPORT
+void
+Parrot_pcc_reuse_continuation(PARROT_INTERP, ARGIN(PMC *call_context), ARGIN_NULLOK(opcode_t *next))
+{
+    ASSERT_ARGS(Parrot_pcc_reuse_continuation)
+    Parrot_CallContext_attributes * const c = CONTEXT_STRUCT(call_context);
+    INTVAL reuse = 0;
+    PMC * cont = c->continuation;
+
+    if (!PMC_IS_NULL(cont)) {
+        INTVAL  invoked;
+        GETATTR_Continuation_invoked(interp, cont, invoked);
+        /* Reuse if invoked. And not tailcalled? */
+        reuse = invoked && !(PObj_get_FLAGS(cont) |= SUB_FLAG_TAILCALL);
+    }
+
+    if (!reuse || !PMC_data(cont)) {
+        cont = Parrot_pmc_new(interp, enum_class_Continuation);
+#ifndef NDEBUG
+        if (Interp_trace_TEST(interp, PARROT_TRACE_CORO_STATE_FLAG))
+            Parrot_io_eprintf(interp, "# continuation not reused\n");
+    }
+    else {
+        if (Interp_trace_TEST(interp, PARROT_TRACE_CORO_STATE_FLAG))
+            Parrot_io_eprintf(interp, "# continuation reused\n");
+#endif
+    }
+
+    /* inlined VTABLE_set_pointer(interp, c->continuation, next) */
+    SETATTR_Continuation_address(interp, cont, next);
+    /* needed */
+    SETATTR_Continuation_runloop_id(interp, cont, interp->current_runloop_id);
+    PARROT_GC_WRITE_BARRIER(interp, cont);
+
+    interp->current_cont = cont;
+}
+
+/*
+
+=item C<static void set_context(PARROT_INTERP, PMC *ctx)>
+
+Helper function to set breakpoint to.
+
+=cut
+
+*/
+
+static void
+set_context(PARROT_INTERP, ARGIN(PMC *ctx))
+{
+    ASSERT_ARGS(set_context)
+
+    CURRENT_CONTEXT(interp) = ctx;
+}
+
+/*
+
+=item C<PMC * Parrot_pcc_unproxy_context(PARROT_INTERP, PMC * proxy)>
+
+CallContext cannot be properly proxied across threads because of direct field
+accesses. Instead, create a new CallContext which acts like a proxy but can
+be used with direct accesses.
+
+=cut
+
+*/
+
+PARROT_WARN_UNUSED_RESULT
+PARROT_CANNOT_RETURN_NULL
+PMC *
+Parrot_pcc_unproxy_context(PARROT_INTERP, ARGIN(PMC * proxy))
+{
+    ASSERT_ARGS(Parrot_pcc_unproxy_context)
+    PMC * const ctx_pmc = Parrot_pcc_allocate_empty_context(interp, PMCNULL);
+    PMC * const target_ctx_pmc = PARROT_PROXY(proxy)->target;
+    Parrot_Context * const ctx = CONTEXT_STRUCT(ctx_pmc);
+    Parrot_Context * const target_ctx = CONTEXT_STRUCT(target_ctx_pmc);
+    Parrot_Interp const target_interp = PARROT_PROXY(proxy)->interp;
+
+    ctx->caller_ctx = PMCNULL;      /* TODO: Double-check this */
+    ctx->outer_ctx = PMCNULL;
+    ctx->lex_pad = Parrot_thread_create_proxy(target_interp, interp, target_ctx->lex_pad);
+    ctx->handlers = Parrot_thread_create_proxy(target_interp, interp, target_ctx->handlers);
+    ctx->current_cont = PMCNULL;
+    ctx->current_namespace = PMCNULL;
+    ctx->current_sig = PMCNULL;
+    ctx->type_tuple = PMCNULL;
+    ctx->arg_flags = PMCNULL;
+    ctx->return_flags = PMCNULL;
+    return ctx_pmc;
+}
 
 /*
 

@@ -1,7 +1,7 @@
 /* thr_pthread.h
  *  Copyright (C) 2001-2003, Parrot Foundation.
  *  Overview:
- *     POSIS pthread interface
+ *     POSIX pthread interface
  *  Data Structure and Algorithms:
  *  History:
  *     2003.12.14  Initial rev by leo
@@ -16,10 +16,11 @@
 
 #  include <pthread.h>
 
-#  define LOCK(m) pthread_mutex_lock((pthread_mutex_t*)&(m))
-#  define UNLOCK(m) pthread_mutex_unlock((pthread_mutex_t*)&(m))
+#  define LOCK(m) pthread_mutex_lock(&(m))
+#  define UNLOCK(m) pthread_mutex_unlock(&(m))
 #  define COND_WAIT(c, m) pthread_cond_wait(&(c), &(m))
-#  define COND_TIMED_WAIT(c, m, t) pthread_cond_timedwait(&(c), &(m), (t))
+#  define COND_TIMED_WAIT(c, m, t, rc) \
+    do { (rc) = pthread_cond_timedwait(&(c), &(m), (t)); } while (0)
 #  define COND_SIGNAL(c) pthread_cond_signal(&(c))
 #  define COND_BROADCAST(c) pthread_cond_broadcast(&(c))
 
@@ -52,6 +53,13 @@
 
 #  define CLEANUP_PUSH(f, a) pthread_cleanup_push((f), (a))
 #  define CLEANUP_POP(a)     pthread_cleanup_pop(a)
+
+#ifdef PARROT_HAS_HEADER_UNISTD
+#  include <unistd.h>
+#  ifdef _POSIX_PRIORITY_SCHEDULING
+#    define YIELD sched_yield()
+#  endif
+#endif /* PARROT_HAS_HEADER_UNISTD */
 
 typedef pthread_mutex_t Parrot_mutex;
 typedef pthread_cond_t Parrot_cond;

@@ -1,9 +1,9 @@
 #! perl
-# Copyright (C) 2009, Parrot Foundation.
+# Copyright (C) 2009-2013, Parrot Foundation.
 
 use strict;
 use warnings;
-use Test::More tests => 8;
+use Test::More tests => 20;
 use Carp;
 use lib qw( lib t/configure/testlib );
 use_ok('config::auto::thread');
@@ -37,9 +37,43 @@ my $ret = $step->runstep($conf);
 ok( $ret, "runstep() returned true value" );
 is($conf->data->get('HAS_THREADS'), 0,
     "Got expected value for 'HAS_THREADS'");
-is($step->result(), q{no}, "Expected result was set");
+is($step->result(), q{skipped}, "Expected result was set");
 
 $conf->replenish($serialized);
+
+($args, $step_list_ref) = process_options( {
+    argv => [ ],
+    mode => q{configure},
+} );
+$conf->options->set('without-threads' => undef);
+
+$conf->add_steps($pkg);
+$conf->options->set( %{$args} );
+$step = test_step_constructor_and_description($conf);
+
+$conf->data->set(osname => 'MSWin32');
+$ret = $step->runstep($conf);
+ok( $ret, "runstep() returned true value" );
+is($conf->data->get('HAS_THREADS'), 1,
+    "Got expected value for 'HAS_THREADS' on MSWin32");
+is($step->result(), q{yes}, "Expected result was set");
+
+$conf->data->set(osname => 'linux');
+$conf->data->set(i_pthread => 'define');
+$ret = $step->runstep($conf);
+ok( $ret, "runstep() returned true value" );
+is($conf->data->get('HAS_THREADS'), 1,
+    "Got expected value for 'HAS_THREADS' on non-MSWin32");
+is($step->result(), q{yes}, "Expected result was set");
+
+$conf->data->set(osname => 'linux');
+$conf->data->set(i_pthread => 'not defined');
+$ret = $step->runstep($conf);
+ok( $ret, "runstep() returned true value" );
+is($conf->data->get('HAS_THREADS'), 0,
+    "Got expected value for 'HAS_THREADS' on non-MSWin32 non-define i_pthread");
+is($step->result(), q{no}, "Expected result was set");
+
 
 pass("Completed all tests in $0");
 

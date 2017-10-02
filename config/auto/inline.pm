@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2009, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -49,15 +49,15 @@ sub runstep {
 sub _first_probe_for_inline {
     my $self = shift;
     my $conf = shift;
-    my $test;
+    my $test = '';
     $conf->cc_gen('config/auto/inline/test1_c.in');
     eval { $conf->cc_build(); };
     if ( !$@ ) {
-        $test = $conf->cc_run();
+        $test = $conf->cc_run_capture();
         chomp $test if $test;
     }
     $conf->cc_clean();
-    return $test;
+    return $test eq "inline" ? $test : '';
 }
 
 sub _second_probe_for_inline {
@@ -68,12 +68,12 @@ sub _second_probe_for_inline {
         $conf->cc_gen('config/auto/inline/test2_c.in');
         eval { $conf->cc_build(); };
         if ( !$@ ) {
-            $test = $conf->cc_run();
+            $test = $conf->cc_run_capture();
             chomp $test if $test;
         }
         $conf->cc_clean();
     }
-    return $test;
+    return $test eq "__inline" ? $test : '';
 }
 
 sub _evaluate_inline {

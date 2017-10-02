@@ -7,7 +7,6 @@ init::manifest nomanicheck
 init::defaults
 init::install
 init::hints verbose-step
-init::headers
 inter::progs
 inter::make
 inter::lex
@@ -55,8 +54,8 @@ auto::gettext
 auto::snprintf
 # auto::perldoc
 auto::ctags
-auto::revision
 auto::icu
+auto::platform
 gen::config_h
 gen::core_pmcs
 gen::crypto
@@ -64,7 +63,6 @@ gen::opengl
 gen::call_list
 gen::languages
 gen::makefiles
-gen::platform
 gen::config_pm
 
 =cut

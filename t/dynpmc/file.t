@@ -1,12 +1,12 @@
 #! perl
-# Copyright (C) 2001-2006, Parrot Foundation.
+# Copyright (C) 2001-2016, Parrot Foundation.
 
 use strict;
 use warnings;
 use lib qw( . lib ../lib ../../lib );
 
 use Test::More;
-use Parrot::Test tests => 9;
+use Parrot::Test tests => 10;
 
 use Parrot::Config;
 
@@ -26,7 +26,7 @@ t/pmc/file.t - Files functions
 
 =head1 SYNOPSIS
 
-    % prove t/pmc/file.t
+    % prove t/dynpmc/file.t
 
 =head1 DESCRIPTION
 
@@ -93,7 +93,7 @@ loop:
         end
 .end
 CODE
-/^[\\w \t\r\n]+current instr\.:/
+/stat failed/
 OUT
 
 # test is_file
@@ -146,7 +146,7 @@ loop:
         end
 .end
 CODE
-/^[\\w \t\r\n]+current instr\.:/
+/stat failed/
 OUT
 
 SKIP: {
@@ -229,7 +229,6 @@ pir_output_is( <<"CODE", <<"OUT", "Test copy for files" );
        \$S2 = '$otpxcopy'
 
        \$P0 = loadlib 'file'
-       \$P0 = loadlib 'os'
        \$P1 = new ['File']
        \$P2 = new ['OS']
 
@@ -254,6 +253,30 @@ ok
 ok
 OUT
 
+pir_output_is( <<"CODE", <<"OUT", "err with copy to dir" );
+.sub main :main
+        \$P0 = loadlib 'file'
+        \$P1 = new ['File']
+
+        \$I1 = 0
+        \$S1 = '$otpx'
+        \$S2 = '$xpto'
+        push_eh E1
+        \$P1."copy"(\$S1, \$S2)
+        \$I1 = 1
+        say '# Failed to throw exception'
+E1:
+        pop_eh
+        eq \$I1, 0, ok1
+        print "not "
+ok1:
+        print "ok 1\\n"
+
+.end
+CODE
+ok 1
+OUT
+
 # test rename
 SKIP: {
     skip 'file exists', 1 if $MSWin32;
@@ -264,7 +287,6 @@ SKIP: {
        \$S2 = '$otpxcopy'
 
        \$P0 = loadlib 'file'
-       \$P0 = loadlib 'os'
        \$P1 = new ['File']
        \$P2 = new ['OS']
 

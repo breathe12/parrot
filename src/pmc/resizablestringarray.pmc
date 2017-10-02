@@ -1,9 +1,9 @@
 /*
-Copyright (C) 2001-2010, Parrot Foundation.
+Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
-src/pmc/resizablestringarray.pmc - resizable array for strings only
+src/pmc/resizablestringarray.pmc - ResizableStringArray PMC
 
 =head1 DESCRIPTION
 
@@ -30,6 +30,25 @@ pmclass ResizableStringArray extends FixedStringArray auto_attrs provides array 
 
 =over 4
 
+=item C<void init_int(INTVAL size)>
+
+Initializes the array.
+
+=cut
+
+*/
+
+    VTABLE void init_int(INTVAL size) :manual_wb {
+        SUPER(size);
+        if (size) {
+            SET_ATTR_resize_threshold(INTERP, SELF, size);
+            PARROT_GC_WRITE_BARRIER(INTERP, SELF);
+        }
+    }
+
+
+/*
+
 =item C<STRING *get_string_keyed_int(INTVAL key)>
 
 Returns the Parrot string value of the element at index C<key>.
@@ -38,20 +57,17 @@ Returns the Parrot string value of the element at index C<key>.
 
 */
 
-    VTABLE STRING *get_string_keyed_int(INTVAL key) {
+    VTABLE STRING *get_string_keyed_int(INTVAL key) :no_wb {
 
         STRING **str_array;
         INTVAL size;
         GET_ATTR_size(INTERP, SELF, size);
 
-        if (key < 0) {
-            if (key < -size)
-                Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                    "ResizableStringArray: index out of bounds!");
-            else
-                key += size;
-        }
-
+        if (key < 0)
+            key += size;
+        if (key < 0)
+                Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                    "index out of bounds");
         if (key >= size)
             return CONST_STRING(INTERP, "");
 
@@ -79,13 +95,11 @@ Sets the Parrot string value of the element at index C<key> to C<value>.
         INTVAL   size;
         GET_ATTR_size(INTERP, SELF, size);
 
-        if (key < 0) {
-            if (key < -size)
-                Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                    "ResizableStringArray: index out of bounds!");
-            else
-                key += size;
-        }
+        if (key < 0)
+            key += size;
+        if (key < 0)
+                Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                    "index out of bounds");
 
         if (key >= size)
             SELF.set_integer_native(key+1);
@@ -105,7 +119,7 @@ the array.
 
 */
 
-    VTABLE void push_string(STRING *value) {
+    VTABLE void push_string(STRING *value) :manual_wb {
         INTVAL next_idx;
         GET_ATTR_size(INTERP, SELF, next_idx);
         SELF.set_string_keyed_int(next_idx, value);
@@ -121,14 +135,14 @@ Removes and returns the last element in the array.
 
 */
 
-    VTABLE STRING *pop_string() {
+    VTABLE STRING *pop_string() :manual_wb {
         STRING *value;
         INTVAL  size;
         GET_ATTR_size(INTERP, SELF, size);
 
         if (size == 0)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                    "ResizableStringArray: Can't pop from an empty array!");
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                    "Can't pop from an empty array");
 
         value = SELF.get_string_keyed_int(size - 1);
         SELF.set_integer_native(size - 1);
@@ -164,8 +178,9 @@ Removes and returns the last element in the array.
 
 */
 
-    VTABLE INTVAL pop_integer() {
+    VTABLE INTVAL pop_integer() :manual_wb {
         PMC * const pmcval = SELF.pop_pmc();
+        PARROT_GC_WRITE_BARRIER(INTERP, SELF);
         return VTABLE_get_integer(INTERP, pmcval);
     }
 
@@ -179,8 +194,9 @@ Removes and returns the last element in the array.
 
 */
 
-    VTABLE FLOATVAL pop_float() {
+    VTABLE FLOATVAL pop_float() :manual_wb {
         PMC * const pmcval = SELF.pop_pmc();
+        PARROT_GC_WRITE_BARRIER(INTERP, SELF);
         return VTABLE_get_number(INTERP, pmcval);
     }
 
@@ -194,14 +210,14 @@ Resizes the array to C<size> elements.
 
 */
 
-    VTABLE void set_integer_native(INTVAL new_size) {
+    VTABLE void set_integer_native(INTVAL new_size) :manual_wb {
 
         STRING **str_array;
         INTVAL   resize_threshold;
 
         if (new_size < 0)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                    "ResizableStringArray: Can't resize!");
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                    "illegal argument");
 
         GET_ATTR_str_array(INTERP, SELF, str_array);
         GET_ATTR_resize_threshold(INTERP, SELF, resize_threshold);
@@ -230,6 +246,7 @@ Resizes the array to C<size> elements.
 
             SET_ATTR_size(INTERP, SELF, new_size);
             /* we could shrink here if necessary */
+            PARROT_GC_WRITE_BARRIER(INTERP, SELF);
             return;
         }
         else {
@@ -254,6 +271,7 @@ Resizes the array to C<size> elements.
             SET_ATTR_size(INTERP, SELF, new_size);
             SET_ATTR_resize_threshold(INTERP, SELF, cur);
         }
+        PARROT_GC_WRITE_BARRIER(INTERP, SELF);
     }
 
 /*
@@ -266,7 +284,7 @@ Creates and returns a copy of the array.
 
 */
 
-    VTABLE PMC *clone() {
+    VTABLE PMC *clone() :no_wb {
         PMC * const copy = SUPER();
         INTVAL size;
         GET_ATTR_size(INTERP, SELF, size);
@@ -285,14 +303,14 @@ Removes and returns an item from the start of the array.
 
 */
 
-    VTABLE STRING *shift_string() {
+    VTABLE STRING *shift_string() :manual_wb {
         STRING *value;
         INTVAL  size;
         GET_ATTR_size(INTERP, SELF, size);
 
         if (size == 0)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                    "ResizableStringArray: Can't shift from an empty array!");
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                    "Can't shift from an empty array");
 
         value = SELF.get_string_keyed_int(0);
         SELF.delete_keyed_int(0);
@@ -309,8 +327,9 @@ Removes and returns the first element in the array.
 
 */
 
-    VTABLE INTVAL shift_integer() {
+    VTABLE INTVAL shift_integer() :manual_wb {
         PMC * const pmcval = SELF.shift_pmc();
+        PARROT_GC_WRITE_BARRIER(INTERP, SELF);
         return VTABLE_get_integer(INTERP, pmcval);
     }
 
@@ -324,8 +343,9 @@ Removes and returns the first element in the array.
 
 */
 
-    VTABLE FLOATVAL shift_float() {
+    VTABLE FLOATVAL shift_float() :manual_wb {
         PMC * const pmcval = SELF.shift_pmc();
+        PARROT_GC_WRITE_BARRIER(INTERP, SELF);
         return VTABLE_get_number(INTERP, pmcval);
     }
 
@@ -341,7 +361,7 @@ the array.
 
 */
 
-    VTABLE void push_pmc(PMC *value) {
+    VTABLE void push_pmc(PMC *value) :manual_wb {
         STRING * const strvalue = VTABLE_get_string(INTERP, value);
         SELF.push_string(strvalue);
     }
@@ -357,7 +377,7 @@ the array.
 
 */
 
-    VTABLE void push_integer(INTVAL value) {
+    VTABLE void push_integer(INTVAL value) :manual_wb {
         PMC    * const ret = Parrot_pmc_new(INTERP, enum_class_String);
         STRING *val;
 
@@ -377,7 +397,7 @@ the array.
 
 */
 
-    VTABLE void push_float(FLOATVAL value) {
+    VTABLE void push_float(FLOATVAL value) :manual_wb {
         PMC    * const ret = Parrot_pmc_new(INTERP, enum_class_String);
         STRING *val;
 
@@ -396,16 +416,15 @@ Removes and returns a String PMC from the start of the array.
 
 */
 
-    VTABLE PMC *shift_pmc() {
+    VTABLE PMC *shift_pmc() :manual_wb {
         UINTVAL  size;
         PMC     *ret;
         STRING  *value;
-
         GET_ATTR_size(INTERP, SELF, size);
 
         if (size == 0)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                    "ResizableStringArray: Can't shift from an empty array!");
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                    "Can't shift from an empty array");
 
         value = SELF.get_string_keyed_int(0);
         ret   = Parrot_pmc_new(INTERP, enum_class_String);
@@ -427,7 +446,7 @@ of the array.
 
 */
 
-    VTABLE void unshift_string(STRING *value) {
+    VTABLE void unshift_string(STRING *value) :manual_wb {
         STRING  **str_array;
         UINTVAL   size, i;
 
@@ -453,7 +472,7 @@ the array.
 
 */
 
-    VTABLE void unshift_pmc(PMC *value) {
+    VTABLE void unshift_pmc(PMC *value) :manual_wb {
         STRING * const strvalue = VTABLE_get_string(INTERP, value);
         SELF.unshift_string(strvalue);
     }
@@ -469,7 +488,7 @@ the array.
 
 */
 
-    VTABLE void unshift_integer(INTVAL value) {
+    VTABLE void unshift_integer(INTVAL value) :manual_wb {
         PMC    * const ret = Parrot_pmc_new(INTERP, enum_class_String);
         STRING *val;
 
@@ -489,7 +508,7 @@ the array.
 
 */
 
-    VTABLE void unshift_float(FLOATVAL value) {
+    VTABLE void unshift_float(FLOATVAL value) :manual_wb {
         PMC    * const ret = Parrot_pmc_new(INTERP, enum_class_String);
         STRING *val;
 
@@ -508,7 +527,7 @@ Converts C<key> to a PMC key and calls C<delete_keyed()> with it.
 
 */
 
-    VTABLE void delete_keyed_int(INTVAL key) {
+    VTABLE void delete_keyed_int(INTVAL key) :manual_wb {
         STRING  **str_array;
         UINTVAL   size, i;
 
@@ -531,7 +550,7 @@ Removes the element at C<*key>.
 
 */
 
-    VTABLE void delete_keyed(PMC *key) {
+    VTABLE void delete_keyed(PMC *key) :manual_wb {
         const INTVAL idx = VTABLE_get_integer(INTERP, key);
         STRING  **str_array;
         UINTVAL   size, i;
@@ -547,12 +566,12 @@ Removes the element at C<*key>.
 
 /*
 
-=item C<void splice(PMC *value, INTVAL offset, INTVAL count)>
+=item C<void splice(PMC *from, INTVAL offset, INTVAL count)>
 
 Replaces C<count> elements starting at C<offset> with the elements in
-C<value>.
+C<from>.
 
-Note that the C<value> PMC can be of any of the various array types.
+Note that the C<from> PMC can be of any of the various array types.
 
 Note that this implementation can be *VERY *inefficient as it manipulates
 everything via the VTABLE api.
@@ -561,26 +580,29 @@ everything via the VTABLE api.
 
 */
 
-    VTABLE void splice(PMC *value, INTVAL offset, INTVAL count) {
+    VTABLE void splice(PMC *from, INTVAL offset, INTVAL count) :manual_wb {
 
         INTVAL length, elems, shift, i;
 
-        if (value->vtable->base_type != SELF->vtable->base_type &&
-                value->vtable->base_type != enum_class_FixedStringArray)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_INVALID_OPERATION,
+        if (from->vtable->base_type != SELF->vtable->base_type
+         && from->vtable->base_type != enum_class_FixedStringArray)
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_INVALID_OPERATION,
                     "ResizableStringArray: illegal type for splice!");
 
         length = VTABLE_elements(INTERP, SELF);
-        elems  = VTABLE_elements(INTERP, value);
+        elems  = VTABLE_elements(INTERP, from);
         shift  = elems - count;
 
         /* start from end? */
-        if (offset < 0)
+        if (offset < 0) {
             offset += length;
-
-        if (offset < 0)
-            Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_OUT_OF_BOUNDS,
-                "illegal splice offset\n");
+            if (offset < 0)
+                Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                        "index out of bounds");
+        }
+        if (count < 0)
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_OUT_OF_BOUNDS,
+                    "illegal argument");
 
         /* shrink the array */
         if (shift < 0) {
@@ -605,7 +627,7 @@ everything via the VTABLE api.
         /* copy the new values */
         for (i = 0; i < elems; ++i)
             VTABLE_set_pmc_keyed_int(INTERP, SELF, i + offset,
-                VTABLE_get_pmc_keyed_int(INTERP, value, i));
+                VTABLE_get_pmc_keyed_int(INTERP, from, i));
     }
 
 /*
@@ -621,12 +643,12 @@ end of the array.
 
 */
 
-    METHOD shift() {
+    METHOD shift() :manual_wb {
         PMC * const value = SELF.shift_pmc();
         RETURN(PMC *value);
     }
 
-    METHOD pop() {
+    METHOD pop() :manual_wb {
         PMC * const value = SELF.pop_pmc();
         RETURN(PMC *value);
     }
@@ -643,11 +665,11 @@ Method forms to add a PMC to the beginning or end of the array.
 
 */
 
-    METHOD unshift(PMC* value) {
+    METHOD unshift(PMC* value) :manual_wb {
         SELF.unshift_pmc(value);
     }
 
-    METHOD push(PMC* value) {
+    METHOD push(PMC* value) :manual_wb {
         SELF.push_pmc(value);
     }
 

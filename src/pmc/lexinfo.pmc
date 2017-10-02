@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2008-2010, Parrot Foundation.
+Copyright (C) 2008-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -32,53 +32,43 @@ pmclass LexInfo extends Hash  provides hash no_ro auto_attrs {
 
 /*
 
-=item C<void class_init()>
-
-Manipulate vtable->flags so that constant PMCs are created.
-If your inherited LexInfo is not so constant, then don't
-do that and provide a mark() method and set the custom_mark flag.
-
 =item C<init_pmc(PMC *sub)>
 
 Initialize the LexInfo PMC and remember the associate
 subroutine.
 
+The C<sub> argument is currently ignored.
+
 =cut
 
 */
 
-    void class_init() {
-
-        /* there is no pmclass const_pmc flag yet */
-        INTERP->vtables[entry]->flags |= VTABLE_IS_CONST_PMC_FLAG;
-
-    }
-
-    VTABLE void init() {
-        SELF.init_pmc(PMCNULL);
-    }
-
-    VTABLE void init_pmc(PMC *sub) {
-        PARROT_ASSERT(PObj_constant_TEST(SELF));
-
+    VTABLE void init() :manual_wb {
         /* Set value type to INTVAL */
         SELF.init_int((INTVAL)enum_type_INTVAL);
-        PObj_custom_mark_destroy_SETALL(SELF);
+    }
+
+    VTABLE void init_pmc(PMC *sub) :manual_wb {
+        UNUSED(sub)
+        /* Set value type to INTVAL */
+        SELF.init_int((INTVAL)enum_type_INTVAL);
     }
 
 /*
 
 =item C<void declare_lex_preg(STRING *name, INTVAL preg)>
 
-Declare a lexical variable that is an alias for a PMC register.  The PIR
-compiler calls this method in response to a ".lex STRING, PREG" directive.
+Declare a lexical variable that is an alias for a PMC register.  This is
+the dynamic version of a ".lex STRING, PREG" directive.
+Note that the second argument is just an integer, i.e. C<0> for C<$P0>.
 
 =cut
 
 */
 
     METHOD declare_lex_preg(STRING *name, INTVAL preg) {
-        VTABLE_set_integer_keyed_str(INTERP, SELF, name, preg);
+        VTABLE_set_integer_keyed_str(INTERP, SELF, name,
+            (preg << 2) | REGNO_PMC);
     }
 
 
@@ -93,7 +83,7 @@ C<symbols>, which gets an array of the names of the symbols in this lexpad.
 
 */
 
-    VTABLE PMC *inspect_str(STRING *what) {
+    VTABLE PMC *inspect_str(STRING *what) :no_wb {
         if (STRING_equal(INTERP, what, CONST_STRING(INTERP, "symbols"))) {
             PMC * const result    = Parrot_pmc_new(INTERP, enum_class_ResizableStringArray);
             const Hash *hash      = (Hash *)SELF.get_pointer();

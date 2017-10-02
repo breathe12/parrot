@@ -6,6 +6,8 @@ TGE::Compiler - A compiler for the grammar syntax of TGE.
 
 =head1 DESCRIPTION
 
+TGE::Compiler is a compiler for the grammar syntax of Tree Grammar Engine.
+
 =cut
 
 .namespace [ 'TGE'; 'Compiler' ]
@@ -283,7 +285,7 @@ Compile a grammar from a source string.
     goto have_infile
   quote_infile:
     infile = concat '"', infile
-    concat infile, '"'
+    infile = concat infile, '"'
   have_infile:
     $P0 = new 'String'
     $P0 = infile
@@ -343,6 +345,7 @@ loop_end:
     code = $S1 . code
   named_grammar:
     libloader = compiler(code)
+    libloader = libloader.'first_sub_in_const_table'()
     libloader()
 
     new_grammar = new grammarname

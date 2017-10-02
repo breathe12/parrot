@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2002-2010, Parrot Foundation.
+ * Copyright (C) 2002-2014, Parrot Foundation.
  */
 
 /*
@@ -26,57 +26,129 @@ handle info/error/warning messages from imcc
 #include "parrot/io.h"
 
 /* HEADERIZER HFILE: compilers/imcc/debug.h */
+/* HEADERIZER BEGIN: static */
+/* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
+
+PARROT_CANNOT_RETURN_NULL
+static STRING * IMCC_get_err_location(ARGMOD(imc_info_t *imcc))
+        __attribute__nonnull__(1)
+        FUNC_MODIFIES(*imcc);
+
+#define ASSERT_ARGS_IMCC_get_err_location __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(imcc))
+/* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
+/* HEADERIZER END: static */
 
 /*
 
-=item C<void IMCC_fatal(PARROT_INTERP, int code, const char *fmt, ...)>
+=item C<void IMCC_fatal(imc_info_t * imcc, int code, const char *fmt, ...)>
 
 Prints out a fatal error message from IMCC and throws an
 IMCC_FATAL_EXCEPTION.
 
+The code argument, the exit code, is ignored, because the exception
+can be caught.
+
 =cut
 
 */
 
 PARROT_DOES_NOT_RETURN
 void
-IMCC_fatal(PARROT_INTERP, SHIM(int code), ARGIN(const char *fmt), ...)
+IMCC_fatal(ARGMOD(imc_info_t * imcc), SHIM(int code), ARGIN(const char *fmt), ...)
 {
     ASSERT_ARGS(IMCC_fatal)
+    STRING * location = STRINGNULL;
     va_list ap;
 
     va_start(ap, fmt);
-    IMCC_INFO(interp)->error_message = Parrot_vsprintf_c(interp, fmt, ap);
+    location = IMCC_get_err_location(imcc);
+    imcc->error_message = Parrot_str_concat(imcc->interp,
+        imcc->error_message,
+        Parrot_sprintf_c(imcc->interp,
+        "error:imcc:%Ss\n\t%Ss",
+        Parrot_vsprintf_c(imcc->interp, fmt, ap),
+        location));
     va_end(ap);
-    IMCC_THROW(IMCC_INFO(interp)->jump_buf, IMCC_FATAL_EXCEPTION);
+    Parrot_ex_throw_from_c_args(imcc->interp, NULL, IMCC_FATAL_EXCEPTION,
+         "%Ss", imcc->error_message);
 }
 
 /*
 
-=item C<void IMCC_fataly(PARROT_INTERP, int code, const char *fmt, ...)>
+=item C<void IMCC_fataly(imc_info_t * imcc, int code, const char *fmt, ...)>
 
 Throws an IMCC_FATALY_EXCEPTION.
 
+The code argument, the exit code, is ignored, because the exception
+can be caught.
+
 =cut
 
 */
 
 PARROT_DOES_NOT_RETURN
 void
-IMCC_fataly(PARROT_INTERP, SHIM(int code), ARGIN(const char *fmt), ...)
+IMCC_fataly(ARGMOD(imc_info_t * imcc), SHIM(int code), ARGIN(const char *fmt), ...)
 {
     ASSERT_ARGS(IMCC_fataly)
+    STRING * location;
     va_list ap;
 
     va_start(ap, fmt);
-    IMCC_INFO(interp)->error_message = Parrot_vsprintf_c(interp, fmt, ap);
+    location = IMCC_get_err_location(imcc);
+    imcc->error_message = Parrot_str_concat(imcc->interp,
+        imcc->error_message,
+        Parrot_sprintf_c(imcc->interp, "error:imcc:%Ss\n\t%Ss",
+        Parrot_vsprintf_c(imcc->interp, fmt, ap),
+        location));
     va_end(ap);
-    IMCC_THROW(IMCC_INFO(interp)->jump_buf, IMCC_FATALY_EXCEPTION);
+    Parrot_ex_throw_from_c_args(imcc->interp, NULL, IMCC_FATALY_EXCEPTION,
+        "%Ss", imcc->error_message);
 }
 
 /*
 
-=item C<void IMCC_fatal_standalone(PARROT_INTERP, int code, const char *fmt,
+=item C<static STRING * IMCC_get_err_location(imc_info_t *imcc)>
+
+Return a string containing the location of an error, with file name and
+line number.
+
+=cut
+
+*/
+
+PARROT_CANNOT_RETURN_NULL
+static STRING *
+IMCC_get_err_location(ARGMOD(imc_info_t *imcc))
+{
+    ASSERT_ARGS(IMCC_get_err_location)
+    macro_frame_t *f;
+    STRING        *old = imcc->frames->s.file;
+    STRING * msg = STRINGNULL;
+
+    if (imcc->frames && imcc->frames->is_macro)
+        msg = Parrot_sprintf_c(imcc->interp, "in macro '.%Ss' line %d",
+                imcc->frames->s.file, imcc->line);
+    else
+        msg = Parrot_sprintf_c(imcc->interp, "in file '%Ss' line %d",
+                imcc->frames->s.file, imcc->line);
+
+
+    for (f = imcc->frames; f; f = (macro_frame_t *)f->s.next) {
+        if (!STRING_equal(imcc->interp, f->s.file, old)) {
+            msg = Parrot_sprintf_c(imcc->interp,
+                "%Ss\n\tincluded from '%Ss' line %d", msg, f->s.file, f->s.line);
+        }
+
+        old = f->s.file;
+    }
+    return msg;
+}
+
+/*
+
+=item C<void IMCC_fatal_standalone(imc_info_t * imcc, int code, const char *fmt,
 ...)>
 
 Prints an error message from IMCC and exits Parrot. This is not a
@@ -88,20 +160,21 @@ recoverable exception but a forced exit.
 
 PARROT_DOES_NOT_RETURN
 void
-IMCC_fatal_standalone(PARROT_INTERP, int code, ARGIN(const char *fmt), ...)
+IMCC_fatal_standalone(ARGMOD(imc_info_t * imcc), int code, ARGIN(const char *fmt), ...)
 {
     ASSERT_ARGS(IMCC_fatal_standalone)
     va_list ap;
+    STRING * s = STRINGNULL;
 
     va_start(ap, fmt);
-    imcc_vfprintf(interp, Parrot_io_STDERR(interp), fmt, ap);
+    s = Parrot_vsprintf_c(imcc->interp, fmt, ap);
     va_end(ap);
-    Parrot_x_exit(interp, code);
+    Parrot_ex_throw_from_c_args(imcc->interp, NULL, code, "%Ss", s);
 }
 
 /*
 
-=item C<void IMCC_warning(PARROT_INTERP, const char *fmt, ...)>
+=item C<void IMCC_warning(imc_info_t * imcc, const char *fmt, ...)>
 
 Prints a warning message, but does not throw an exception and does not
 cause Parrot to exit.
@@ -111,21 +184,20 @@ cause Parrot to exit.
 */
 
 void
-IMCC_warning(PARROT_INTERP, ARGIN(const char *fmt), ...)
+IMCC_warning(ARGMOD(imc_info_t * imcc), ARGIN(const char *fmt), ...)
 {
     ASSERT_ARGS(IMCC_warning)
     va_list ap;
-    if (IMCC_INFO(interp)->imcc_warn)
-        return;
-
     va_start(ap, fmt);
-    imcc_vfprintf(interp, Parrot_io_STDERR(interp), fmt, ap);
+    imcc->error_message = Parrot_str_concat(imcc->interp,
+                                            imcc->error_message,
+                                            Parrot_vsprintf_c(imcc->interp, fmt, ap));
     va_end(ap);
 }
 
 /*
 
-=item C<void IMCC_info(PARROT_INTERP, int level, const char *fmt, ...)>
+=item C<void IMCC_info(imc_info_t * imcc, int level, const char *fmt, ...)>
 
 Prints some information, if the level of the information is higher
 then IMCC's verbose mode.
@@ -135,22 +207,22 @@ then IMCC's verbose mode.
 */
 
 void
-IMCC_info(PARROT_INTERP, int level, ARGIN(const char *fmt), ...)
+IMCC_info(ARGMOD(imc_info_t * imcc), int level, ARGIN(const char *fmt), ...)
 {
     ASSERT_ARGS(IMCC_info)
     va_list ap;
 
-    if (level > IMCC_INFO(interp)->verbose)
+    if (level > imcc->verbose)
         return;
 
     va_start(ap, fmt);
-    imcc_vfprintf(interp, Parrot_io_STDERR(interp), fmt, ap);
+    imcc_vfprintf(imcc, Parrot_io_STDERR(imcc->interp), fmt, ap);
     va_end(ap);
 }
 
 /*
 
-=item C<void IMCC_debug(PARROT_INTERP, int level, const char *fmt, ...)>
+=item C<void IMCC_debug(imc_info_t * imcc, int level, const char *fmt, ...)>
 
 Prints a debug message, if IMCC's debug mode is turned on.
 
@@ -159,68 +231,94 @@ Prints a debug message, if IMCC's debug mode is turned on.
 */
 
 void
-IMCC_debug(PARROT_INTERP, int level, ARGIN(const char *fmt), ...)
+IMCC_debug(ARGMOD(imc_info_t * imcc), int level, ARGIN(const char *fmt), ...)
 {
     ASSERT_ARGS(IMCC_debug)
     va_list ap;
 
-    if (!(level & IMCC_INFO(interp)->debug))
+    if (!(level & imcc->debug))
         return;
     va_start(ap, fmt);
-    imcc_vfprintf(interp, Parrot_io_STDERR(interp), fmt, ap);
+    imcc_vfprintf(imcc, Parrot_io_STDERR(imcc->interp), fmt, ap);
     va_end(ap);
 }
 
 /*
 
-=item C<void dump_instructions(PARROT_INTERP, const IMC_Unit *unit)>
+=item C<void IMCC_debug_ins(imc_info_t *imcc, int level, const Instruction
+*ins)>
 
-Dumps the current instruction status of IMCC
+Prints a instruction debug message to STDERR, if IMCC's debug mode is turned on.
 
 =cut
 
 */
 
 void
-dump_instructions(PARROT_INTERP, ARGIN(const IMC_Unit *unit))
+IMCC_debug_ins(ARGMOD(imc_info_t *imcc), int level, ARGIN(const Instruction *ins))
+{
+    ASSERT_ARGS(IMCC_debug_ins)
+    PIOHANDLE pstderr;
+    if (!(level & imcc->debug))
+        return;
+    pstderr = Parrot_io_internal_std_os_handle(imcc->interp, PIO_STDERR_FILENO);
+    Parrot_io_pprintf(imcc->interp, pstderr, "0x%lx %s ", PTR2ULONG(ins), ins->opname);
+    ins_print(imcc, pstderr, ins);
+    Parrot_io_pprintf(imcc->interp, pstderr, "\n");
+}
+
+/*
+
+=item C<void dump_instructions(imc_info_t * imcc, const IMC_Unit *unit)>
+
+Dumps the current instruction status of IMCC, with -d8.
+
+=cut
+
+*/
+
+void
+dump_instructions(ARGMOD(imc_info_t * imcc), ARGIN(const IMC_Unit *unit))
 {
     ASSERT_ARGS(dump_instructions)
     const Instruction *ins;
     int                pc;
+    const PIOHANDLE pstderr =
+            Parrot_io_internal_std_os_handle(imcc->interp, PIO_STDERR_FILENO);
 
-    Parrot_io_fprintf(interp, Parrot_io_STDERR(interp),
+    Parrot_io_eprintf(imcc->interp,
             "\nDumping the instructions status:"
             "\n-------------------------------\n");
-    Parrot_io_fprintf(interp, Parrot_io_STDERR(interp),
+    Parrot_io_eprintf(imcc->interp,
             "nins line blck deep flags\t    type opnr size   pc  X ins\n");
 
     for (pc = 0, ins = unit->instructions; ins; ins = ins->next) {
         const Basic_block * const bb = unit->bb_list[ins->bbindex];
 
         if (bb) {
-            Parrot_io_fprintf(interp, Parrot_io_STDERR(interp),
+            Parrot_io_eprintf(imcc->interp,
                     "%4i %4d %4d %4d\t%x\t%8x %4d %4d %4d  ",
                      ins->index, ins->line, bb->index, bb->loop_depth,
-                     ins->flags, ins->type, OP_INFO_OPNUM(ins->op),
+                     ins->flags, ins->type, ins->op ? OP_INFO_OPNUM(ins->op) : 0,
                      ins->opsize, pc);
         }
         else {
-             fprintf(stderr, "\t");
+            Parrot_io_eprintf(imcc->interp, "\t");
         }
 
-        Parrot_io_fprintf(interp, Parrot_io_STDERR(interp), "%s\n", ins->opname);
-        ins_print(interp, Parrot_io_STDERR(interp), ins);
+        Parrot_io_eprintf(imcc->interp, "%s\n", ins->opname);
+        ins_print(imcc, pstderr, ins);
         pc += ins->opsize;
     }
 
-    Parrot_io_fprintf(interp, Parrot_io_STDERR(interp), "\n");
+    Parrot_io_eprintf(imcc->interp, "\n");
 }
 
 /*
 
 =item C<void dump_cfg(const IMC_Unit *unit)>
 
-Dumps the current IMCC config data.
+Dumps the current IMCC config data, with -d10.
 
 =cut
 
@@ -370,7 +468,7 @@ dump_symreg(ARGIN(const IMC_Unit *unit))
             continue;
         if (!r->first_ins)
             continue;
-        fprintf(stderr, "%s \t%d\t%d\t%d\t%d\t%c   %2d %2d\t%d\t%d\t%s\t%lx\n",
+        fprintf(stderr, "%s \t%d\t%d\t%d\t%d\t%c   %2d %2d\t%d\t%d\t%s\t"UINTVAL_FMT"\n",
                 r->name,
                 r->first_ins->index, r->last_ins->index,
                 r->first_ins->bbindex, r->last_ins->bbindex,

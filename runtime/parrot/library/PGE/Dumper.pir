@@ -1,13 +1,11 @@
-# Copyright (C) 2005-2009, Parrot Foundation.
+# Copyright (C) 2005-2012, Parrot Foundation.
 
-=head1 TITLE
+=head1 DESCRIPTION
 
 PGE::Dumper - various methods for displaying PGE structures
 
 =cut
 
-.sub __onload
-.end
 
 .namespace [ "PGE";"Match" ]
 

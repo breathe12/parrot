@@ -5,7 +5,7 @@ use strict;
 use Carp ();
 BEGIN           { *DEBUG = sub () {0} unless defined &DEBUG }
 use integer;
-use Pod::Escapes 1.03 ();
+use Pod::Escapes 1.04 ();
 use Pod::Simple::LinkSection ();
 use Pod::Simple::BlackBox ();
 #use utf8;
@@ -18,7 +18,7 @@ use vars qw(
 );
 
 @ISA = ('Pod::Simple::BlackBox');
-$VERSION = '3.07';
+$VERSION = '3.28';
 
 @Known_formatting_codes = qw(I B C L E F S X Z); 
 %Known_formatting_codes = map(($_=>1), @Known_formatting_codes);
@@ -67,7 +67,7 @@ __PACKAGE__->_accessorize(
 
   'hide_line_numbers', # For some dumping subclasses: whether to pointedly
                        # suppress the start_line attribute
-                      
+
   'line_count',        # the current line number
   'pod_para_count',    # count of pod paragraphs seen so far
 
@@ -80,13 +80,15 @@ __PACKAGE__->_accessorize(
   'bare_output',       # For some subclasses: whether to prepend
                        #  header-code and postpend footer-code
 
-  'fullstop_space_harden', # Whether to turn ".  " into ".[nbsp] ";
-
+  'keep_encoding_directive',  # whether to emit =encoding
   'nix_X_codes',       # whether to ignore X<...> codes
   'merge_text',        # whether to avoid breaking a single piece of
                        #  text up into several events
 
   'preserve_whitespace', # whether to try to keep whitespace as-is
+  'strip_verbatim_indent', # What indent to strip from verbatim
+
+  'parse_characters',  # Whether parser should expect chars rather than octets
 
  'content_seen',      # whether we've seen any real Pod content
  'errors_seen',       # TODO: document.  whether we've seen any errors (fatal or not)
@@ -94,17 +96,51 @@ __PACKAGE__->_accessorize(
  'codes_in_verbatim', # for PseudoPod extensions
 
  'code_handler',      # coderef to call when a code (non-pod) line is seen
- 'cut_handler',       # coderef to call when a =cut line is seen
+ 'cut_handler',       # ... when a =cut line is seen
+ 'pod_handler',       # ... when a =pod line is seen
+ 'whiteline_handler', # ... when a line with only whitespace is seen
  #Called like:
  # $code_handler->($line, $self->{'line_count'}, $self) if $code_handler;
  #  $cut_handler->($line, $self->{'line_count'}, $self) if $cut_handler;
-  
+ #  $pod_handler->($line, $self->{'line_count'}, $self) if $pod_handler;
+ #   $wl_handler->($line, $self->{'line_count'}, $self) if $wl_handler;
+ 'parse_empty_lists', # whether to acknowledge empty =over/=back blocks
+
 );
 
 #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 sub any_errata_seen {  # good for using as an exit() value...
   return shift->{'errors_seen'} || 0;
+}
+
+# Returns the encoding only if it was recognized as being handled and set
+sub detected_encoding {
+  return shift->{'detected_encoding'};
+}
+
+sub encoding {
+  my $this = shift;
+  return $this->{'encoding'} unless @_;  # GET.
+
+  $this->_handle_encoding_line("=encoding $_[0]");
+  if ($this->{'_processed_encoding'}) {
+    delete $this->{'_processed_encoding'};
+    if(! $this->{'encoding_command_statuses'} ) {
+      DEBUG > 2 and print " CRAZY ERROR: encoding wasn't really handled?!\n";
+    } elsif( $this->{'encoding_command_statuses'}[-1] ) {
+      $this->scream( "=encoding $_[0]",
+         sprintf "Couldn't do %s: %s",
+         $this->{'encoding_command_reqs'  }[-1],
+         $this->{'encoding_command_statuses'}[-1],
+      );
+    } else {
+      DEBUG > 2 and print " (encoding successfully handled.)\n";
+    }
+    return $this->{'encoding'};
+  } else {
+    return undef;
+  }
 }
 
 #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -357,7 +393,8 @@ sub parse_string_document {
     next unless defined $line_group and length $line_group;
     pos($line_group) = 0;
     while($line_group =~
-      m/([^\n\r]*)((?:\r?\n)?)/g
+      m/([^\n\r]*)(\r?\n?)/g # supports \r, \n ,\r\n
+      #m/([^\n\r]*)((?:\r?\n)?)/g
     ) {
       #print(">> $1\n"),
       $self->parse_lines($1)
@@ -398,7 +435,7 @@ sub parse_file {
   } else {
     {
       local *PODSOURCE;
-      open(PODSOURCE, "<", "$source") || Carp::croak("Can't open $source: $!");
+      open(PODSOURCE, "<$source") || Carp::croak("Can't open $source: $!");
       $self->{'source_filename'} = $source;
       $source = *PODSOURCE{IO};
     }
@@ -407,16 +444,30 @@ sub parse_file {
   # By here, $source is a FH.
 
   $self->{'source_fh'} = $source;
-  
+
   my($i, @lines);
   until( $self->{'source_dead'} ) {
     splice @lines;
+
     for($i = MANY_LINES; $i--;) {  # read those many lines at a time
       local $/ = $NL;
       push @lines, scalar(<$source>);  # readline
       last unless defined $lines[-1];
        # but pass thru the undef, which will set source_dead to true
     }
+
+    my $at_eof = ! $lines[-1]; # keep track of the undef
+    pop @lines if $at_eof; # silence warnings
+
+    # be eol agnostic
+    s/\r\n?/\n/g for @lines;
+ 
+    # make sure there are only one line elements for parse_lines
+    @lines = split(/(?<=\n)/, join('', @lines));
+
+    # push the undef back after popping it to set source_dead to true
+    push @lines, undef if $at_eof;
+
     $self->parse_lines(@lines);
   }
   delete($self->{'source_fh'}); # so it can be GC'd
@@ -452,7 +503,7 @@ sub parse_from_file {
     require Symbol;
     my $out_fh = Symbol::gensym();
     DEBUG and print "Write-opening to $to\n";
-    open($out_fh, ">", "$to")  or  Carp::croak "Can't write-open $to: $!";
+    open($out_fh, ">$to")  or  Carp::croak "Can't write-open $to: $!";
     binmode($out_fh)
      if $self->can('write_with_binmode') and $self->write_with_binmode;
     $self->output_fh($out_fh);
@@ -475,7 +526,7 @@ sub whine {
   return $self->_complain_errata(@_);
 }
 
-sub scream {    # like whine, but not suppressable
+sub scream {    # like whine, but not suppressible
   #my($self,$line,$complaint) = @_;
   my $self = shift(@_);
   ++$self->{'errors_seen'};
@@ -961,7 +1012,7 @@ sub _treat_Zs {  # Nix Z<...>'s
 # possibly a man page name (like "crontab(5)" is).
 #
 
-############# Not implemented, I guess.
+############# The "raw" attribute that is already there.
 # Sixth:
 # The raw original L<...> content, before text is split on "|", "/", etc,
 # and before E<...> codes are expanded.
@@ -983,7 +1034,7 @@ sub _treat_Ls {  # Process our dear dear friends, the L<...> sequences
   # L<text|name/"sec"> or L<text|name/sec>
   # L<text|/"sec"> or L<text|/sec> or L<text|"sec">
   # L<scheme:...>
-  # Ltext|scheme:...>
+  # L<text|scheme:...>
 
   my($self,@stack) = @_;
 
@@ -1013,6 +1064,12 @@ sub _treat_Ls {  # Process our dear dear friends, the L<...> sequences
         $self->whine( $start_line, "An empty L<>" );
         $treelet->[$i] = 'L<>';  # just make it a text node
         next;  # and move on
+      }
+
+      if( (! ref $ell->[2]  && $ell->[2] =~ /\A\s/)
+        ||(! ref $ell->[-1] && $ell->[-1] =~ /\s\z/)
+      ) {
+        $self->whine( $start_line, "L<> starts or ends with whitespace" );
       }
      
       # Catch URLs:
@@ -1073,7 +1130,7 @@ sub _treat_Ls {  # Process our dear dear friends, the L<...> sequences
       # Catch some very simple and/or common cases
       if(@{$ell} == 3 and ! ref $ell->[2]) {
         my $it = $ell->[2];
-        if($it =~ m/^[-a-zA-Z0-9]+\([-a-zA-Z0-9]+\)$/s) { # man sections
+        if($it =~ m{^[^/|]+[(][-a-zA-Z0-9]+[)]$}s) { # man sections
           # Hopefully neither too broad nor too restrictive a RE
           DEBUG > 1 and print "Catching \"$it\" as manpage link.\n";
           $ell->[1]{'type'} = 'man';
@@ -1128,6 +1185,13 @@ sub _treat_Ls {  # Process our dear dear friends, the L<...> sequences
 
           DEBUG > 3 and
            print "     FOUND a '|' in it.  Splitting into [$1] + [$2]\n";
+
+          if ($link_text[0] =~ m{[|/]}) {
+            $self->whine(
+              $start_line,
+              "alternative text '$link_text[0]' contains non-escaped | or /"
+            );
+          }
 
           unshift @link_text, splice @ell_content, 0, $j;
             # leaving only things at J and after
@@ -1232,7 +1296,7 @@ sub _treat_Ls {  # Process our dear dear friends, the L<...> sequences
       # And the E resolver will have to deal with all our treeletty things:
 
       if(@ell_content == 1 and !ref($ell_content[0])
-         and $ell_content[0] =~ m/^[-a-zA-Z0-9]+\([-a-zA-Z0-9]+\)$/s
+         and $ell_content[0] =~ m{^[^/]+[(][-a-zA-Z0-9]+[)]$}s
       ) {
         $ell->[1]{'type'}    = 'man';
         DEBUG > 3 and print "Considering this ($ell_content[0]) a man link.\n";
@@ -1330,6 +1394,10 @@ sub _treat_Es {
       }
 
       DEBUG > 1 and print "Ogling E<$content>\n";
+
+      # XXX E<>'s contents *should* be a valid char in the scope of the current
+      # =encoding directive. Defaults to iso-8859-1, I believe. Fix this in the
+      # future sometime.
 
       $charnum  = Pod::Escapes::e2charnum($content);
       DEBUG > 1 and print " Considering E<$content> with char ",

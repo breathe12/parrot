@@ -6,7 +6,7 @@ use warnings;
 use lib qw( . lib ../lib ../../lib );
 use Test::More;
 use Parrot::Config;
-use Parrot::Test tests => 26;
+use Parrot::Test tests => 27;
 
 ##############################
 # Parrot Calling Conventions
@@ -23,7 +23,6 @@ pir_output_is( <<'CODE', <<'OUT', "low-level syntax" );
     .get_result z
     .end_call
     print z
-    end
 .end
 .sub _sub
     .param int a
@@ -46,7 +45,6 @@ pir_output_is( <<'CODE', <<'OUT', "func() syntax" );
     .local string z
     z = _sub(10, y)
     print z
-    end
 .end
 .sub _sub
     .param int a
@@ -88,7 +86,6 @@ pir_output_is( <<'CODE', <<'OUT', "_func() syntax with var - global" );
     .local pmc the_sub
     the_sub = get_global "_sub"
     the_sub(10, 20)
-    end
 .end
 .sub _sub
     .param int a
@@ -97,7 +94,6 @@ pir_output_is( <<'CODE', <<'OUT', "_func() syntax with var - global" );
     print "\n"
     print b
     print "\n"
-    end
 .end
 CODE
 10
@@ -126,7 +122,6 @@ pir_output_is( <<'CODE', <<'OUT', "tail recursive sub" );
     result = _fact(product, count)
     print result
     print "\n"
-    end
 .end
 
 .sub _fact
@@ -256,7 +251,7 @@ done in main
 OUT
 
 pir_output_is( <<'CODE', <<'OUT', ".set_arg :flat" );
-.sub _main
+.sub _main :main
     .local pmc x, y, z, ar, ar2
     x = new 'String'
     x = "first\n"
@@ -280,7 +275,6 @@ pir_output_is( <<'CODE', <<'OUT', ".set_arg :flat" );
     .set_arg z
     .call s
     .end_call
-    end
 .end
 .sub _sub
     .param pmc a
@@ -312,7 +306,7 @@ last
 OUT
 
 pir_output_is( <<'CODE', <<'OUT', "foo (arg :flat)" );
-.sub _main
+.sub _main :main
     .local pmc x, y, z, ar, ar2
     x = new 'String'
     x = "first\n"
@@ -328,7 +322,6 @@ pir_output_is( <<'CODE', <<'OUT', "foo (arg :flat)" );
     push ar2, "ok 4\n"
     push ar2, "ok 5\n"
     _sub(x, ar :flat, y, ar2 :flat, z)
-    end
 .end
 
 .sub _sub
@@ -364,7 +357,6 @@ OUT
 pir_output_is( <<'CODE', <<'OUT', ":main pragma, syntax only" );
 .sub _main :main
     print "ok\n"
-    end
 .end
 CODE
 ok
@@ -376,14 +368,13 @@ OUT
 pir_output_like( <<'CODE', <<'OUT', "more pragmas, syntax only" );
 .sub _main :main :load :postcomp
     print "ok\n"
-    end
 .end
 CODE
 /(ok\n){1,2}/
 OUT
 
 pir_output_is( <<'CODE', <<'OUT', "multi 1" );
-.sub foo :multi()
+.sub foo :multi() :main
     print "ok 1\n"
 .end
 .sub f1 :multi(int)
@@ -398,24 +389,22 @@ OUT
 
 pir_output_is( <<'CODE', <<'OUT', "\:main defined twice" );
 .sub foo :main
-        set $S0, 'not ok'
-        print $S0
-        print "\r\n"
-        end
-.end
-
-.sub bar :main
         set $S0, 'ok'
         print $S0
         print "\r\n"
-        end
+.end
+
+.sub bar :main
+        set $S0, 'not ok'
+        print $S0
+        print "\r\n"
 .end
 CODE
 ok
 OUT
 
 pir_output_is( <<'CODE', <<'OUT', "\:anon subpragma, syntax only" );
-.sub anon :anon
+.sub anon :anon :main
     print "ok\n"
 .end
 CODE
@@ -562,7 +551,7 @@ ok 2 - Unicode method names allowed
 OUT
 
 pir_output_is( <<'CODE', <<'OUT', 'named parameters');
-.sub main
+.sub main :main
 .local pmc foo
 foo = get_global 'foo'
 
@@ -593,7 +582,7 @@ CODE
 OUT
 
 pir_output_is( <<'CODE', <<'OUT', 'escape sequences in sub names, TT #1125' );
-.sub 'main'
+.sub 'main' :main
     say "xyz:<\" \">"
     .const 'Sub' $P0 = 'foo'
     say $P0
@@ -621,7 +610,7 @@ xyz:<\>
 OUT
 
 pir_output_is( <<'CODE', <<'OUT', ':named should default to param name');
-.sub main
+.sub main :main
   $I0 = 'incr'('value'=>3)
   say $I0
 .end
@@ -633,6 +622,20 @@ pir_output_is( <<'CODE', <<'OUT', ':named should default to param name');
 .end
 CODE
 4
+OUT
+
+pir_output_is( <<'CODE', <<'OUT', 'Explicit self param should not conflict');
+.sub foo :method
+    .param pmc self
+    say self
+.end
+
+.sub main :main
+    $P0 = box 'hello'
+    'foo'($P0)
+.end
+CODE
+hello
 OUT
 
 # Local Variables:

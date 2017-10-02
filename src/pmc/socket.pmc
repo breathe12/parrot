@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2008, Parrot Foundation.
+Copyright (C) 2008-2016, Parrot Foundation.
 
 =head1 NAME
 
@@ -7,7 +7,7 @@ src/pmc/socket.pmc - Socket PMC
 
 =head1 DESCRIPTION
 
-The Socket PMC performs network I/O operations.
+The Socket PMC performs abstract network I/O operations.
 
 =head2 Vtable Functions
 
@@ -18,6 +18,9 @@ The Socket PMC performs network I/O operations.
 */
 
 #include "../src/io/io_private.h"
+#include "pmc/pmc_sockaddr.h"
+
+#define CHUNK_SIZE      2048
 
 /* HEADERIZER HFILE: none */
 /* HEADERIZER BEGIN: static */
@@ -26,6 +29,9 @@ The Socket PMC performs network I/O operations.
 pmclass Socket extends Handle provides socket auto_attrs {
     ATTR PMC *local;           /* Local addr                   */
     ATTR PMC *remote;          /* Remote addr                  */
+    ATTR INTVAL  family;
+    ATTR INTVAL  type;
+    ATTR INTVAL  protocol;
 
 /*
 
@@ -38,11 +44,18 @@ Initializes a newly created Socket object.
 */
 
     VTABLE void init() {
-        Parrot_Socket_attributes *data_struct =
+        Parrot_Socket_attributes * const data_struct =
                 (Parrot_Socket_attributes *) PMC_data(SELF);
 
-        data_struct->local  = PMCNULL;
-        data_struct->remote = PMCNULL;
+        data_struct->record_separator = CONST_STRING(interp, "\n");
+        data_struct->local            = PMCNULL;
+        data_struct->remote           = PMCNULL;
+        data_struct->io_vtable = (IO_VTABLE *)Parrot_io_get_vtable(interp, IO_VTABLE_SOCKET, NULL);
+        data_struct->read_buffer      = NULL;
+        data_struct->write_buffer     = NULL;
+        data_struct->encoding         = STRINGNULL;
+
+        Parrot_io_socket_initialize(INTERP, SELF);
 
         PObj_custom_mark_destroy_SETALL(SELF);
     }
@@ -57,13 +70,15 @@ Create a copy of the socket handle.
 
 */
 
-    VTABLE PMC *clone() {
-        PMC * copy = SUPER();
-        Parrot_Socket_attributes * const old_struct = PARROT_SOCKET(SELF);
+    VTABLE PMC *clone() :no_wb {
+        PMC * const copy = SUPER();
+        const Parrot_Socket_attributes * const old_struct = PARROT_SOCKET(SELF);
         Parrot_Socket_attributes * const data_struct = PARROT_SOCKET(copy);
 
-        data_struct->local      = VTABLE_clone(INTERP, old_struct->local);
-        data_struct->remote     = VTABLE_clone(INTERP, old_struct->remote);
+        if (!PMC_IS_NULL(old_struct->local))
+            data_struct->local      = VTABLE_clone(INTERP, old_struct->local);
+        if (!PMC_IS_NULL(old_struct->remote))
+            data_struct->remote     = VTABLE_clone(INTERP, old_struct->remote);
 
         return copy;
     }
@@ -78,12 +93,16 @@ Mark active socket handle data as live.
 
 */
 
-    VTABLE void mark() {
+    VTABLE void mark() :no_wb {
         Parrot_Socket_attributes * const data = PARROT_SOCKET(SELF);
 
         if (data) {
             Parrot_gc_mark_PMC_alive(INTERP, data->local);
             Parrot_gc_mark_PMC_alive(INTERP, data->remote);
+            Parrot_gc_mark_STRING_alive(INTERP, data->encoding);
+            Parrot_gc_mark_STRING_alive(INTERP, data->record_separator);
+            Parrot_io_buffer_mark(interp, data->read_buffer);
+            Parrot_io_buffer_mark(interp, data->write_buffer);
         }
     }
 /*
@@ -96,13 +115,8 @@ Free structures.
 
 */
     VTABLE void destroy() {
-        if (PARROT_SOCKET(SELF)) {
-            Parrot_Socket_attributes *data_struct = PARROT_SOCKET(SELF);
-
-            if (data_struct->os_handle != PIO_INVALID_HANDLE)
-                Parrot_io_close_piohandle(INTERP, data_struct->os_handle);
-            data_struct->os_handle = PIO_INVALID_HANDLE;
-        }
+        /* TODO: Make sure to free the buffers */
+        Parrot_io_close(INTERP, SELF, 1);
     }
 
 /*
@@ -115,8 +129,8 @@ Returns whether the Socket is currently open.
 
 */
 
-    VTABLE INTVAL get_bool() {
-        return !Parrot_io_socket_is_closed(SELF);
+    VTABLE INTVAL get_bool() :no_wb {
+        return !Parrot_io_is_closed(INTERP, SELF);
     }
 
 /*
@@ -135,16 +149,18 @@ Returns whether the Socket is currently open.
 
 
     METHOD socket(INTVAL fam, INTVAL type, INTVAL proto) {
-        if (Parrot_io_socket(INTERP, SELF, fam, type, proto) < 0)
-            RETURN(PMC * PMCNULL);
-        RETURN(PMC * SELF);
+        PMC *socket = Parrot_io_socket(INTERP, SELF, fam, type, proto);
+        if (socket) {
+            RETURN(PMC * socket);
+        }
+        RETURN(PMC * PMCNULL);
     }
 
 /*
 
 =item C<poll(INTVAL which, INTVAL sec, INTVAL usec)>
 
-Watches the socket for C<sec> seconds and C<usec> milliseconds.  C<which>
+Watches the socket for C<sec> seconds and C<usec> microseconds.  C<which>
 is a bitmask representing the states you want to watch for.  Or together 1
 for readable, two for writeable, and four for exceptions.
 
@@ -154,23 +170,88 @@ for readable, two for writeable, and four for exceptions.
 
 
     METHOD poll(INTVAL which, INTVAL sec, INTVAL usec) {
-        INTVAL poll = Parrot_io_poll(INTERP, SELF, which, sec, usec);
+        const INTVAL poll = Parrot_io_poll(INTERP, SELF, which, sec, usec);
         RETURN(INTVAL poll);
     }
 
 /*
 
-=item C<sockaddr(STRING * address, INTVAL port)>
+=item C<sockaddr(STRING * address, INTVAL port, INTVAL family :optional)>
 
 C<sockaddr> returns an object representing a socket address, generated
-from a port number (integer) and an address (string).
+from a port number (integer) , address (string) and an optional address
+family (integer). If no address family is given, it defaults to IPv4.
 
 =cut
 
 */
 
-    METHOD sockaddr(STRING * address, INTVAL port) {
-        PMC * res = Parrot_io_sockaddr_in(INTERP, address, port);
+    METHOD sockaddr(STRING * address, INTVAL port, INTVAL family :optional) :no_wb {
+        PMC *array;
+        PMC *res;
+
+        if (!family)
+            family = PIO_PF_INET;
+
+        if (family == PIO_PF_UNIX) {
+            array = Parrot_io_internal_getaddrinfo_unix(INTERP, address);
+        }
+        else {
+            array = Parrot_io_internal_getaddrinfo(INTERP, address, port,
+                    PIO_PROTO_TCP, family, 0);
+        }
+
+        if (VTABLE_elements(interp, array))
+            res = VTABLE_get_pmc_keyed_int(interp, array, 0);
+        else
+            res = PMCNULL;
+
+        RETURN(PMC * res);
+    }
+
+/*
+
+=item C<getaddrinfo(STRING * address, INTVAL port, INTVAL protocol, INTVAL family, INTVAL passive)>
+
+C<getaddrinfo> returns an array of Sockaddr PMCs representing the result of the
+C<getaddrinfo(3)> function which consists of multiple socket addresses,
+including family and protocol. It can be passed to C<bind()> or C<connect()>.
+
+=cut
+
+*/
+    METHOD getaddrinfo(STRING * address,
+                       INTVAL port, INTVAL protocol, INTVAL family, INTVAL passive) :no_wb {
+        PMC * const res = Parrot_io_internal_getaddrinfo(INTERP, address, port, protocol, family,
+                                                         passive);
+        RETURN(PMC * res);
+    }
+
+/*
+
+=item C<remote_address()>
+
+C<remote_address> returns the remote address of this socket PMC.
+
+=cut
+
+*/
+    METHOD remote_address() :no_wb {
+        PMC * const res = PARROT_SOCKET(SELF)->remote;
+        RETURN(PMC * res);
+    }
+
+/*
+
+=item C<local_address()>
+
+C<local_address> returns the local address of this socket PMC.
+
+=cut
+
+*/
+    METHOD local_address() :no_wb {
+        PMC * const res = PARROT_SOCKET(SELF)->local;
         RETURN(PMC * res);
     }
 
@@ -185,11 +266,28 @@ Test if the socket is closed.
 
 */
 
-    METHOD is_closed() {
-        const INTVAL status = VTABLE_get_bool(INTERP, SELF);
+    METHOD is_closed() :no_wb {
+        const INTVAL status = !VTABLE_get_bool(INTERP, SELF);
         RETURN(INTVAL status);
     }
 
+
+/*
+
+=item C<getprotobyname(STRING * name)>
+
+C<getprotobyname> returns a protocol number suitable for passing to
+C<socket>, based on the given protocol name. This is normal only
+necessary when opening sockets in raw mode.
+
+=cut
+
+*/
+
+    METHOD getprotobyname(STRING * name) :no_wb {
+        INTVAL proto = Parrot_io_getprotobyname(INTERP, name);
+        RETURN(INTVAL proto);
+    }
 
 /*
 
@@ -209,8 +307,8 @@ connected socket object.]
 */
 
     METHOD connect(PMC * address) {
-        INTVAL res = Parrot_io_connect(INTERP, SELF, address);
-        RETURN(INTVAL res);
+        Parrot_io_socket_connect(INTERP, SELF, address);
+        RETURN(INTVAL 0);
     }
 
 /*
@@ -225,13 +323,15 @@ argument, and only returns a status object. When the recv operation is
 complete, it invokes the callback, passing it a status object and a
 string containing the received message.
 
+If the socket is closed or on other errors, it throws an .EXCEPTION_PIO_ERROR
+Exception.
+
 =cut
 
 */
 
-    METHOD recv() {
-        STRING * result;
-        result = Parrot_io_reads(INTERP, SELF, 0);
+    METHOD recv() :no_wb {
+        STRING * const result = Parrot_io_read_s(INTERP, SELF, PIO_READ_SIZE_ANY);
         RETURN(STRING * result);
     }
 
@@ -250,7 +350,7 @@ complete, it invokes the callback, passing it a status object.
 */
 
     METHOD send(STRING *buf) {
-        INTVAL res = Parrot_io_send(INTERP, SELF, buf);
+        const INTVAL res = Parrot_io_write_s(INTERP, SELF, buf);
         RETURN(INTVAL res);
     }
 
@@ -259,7 +359,7 @@ complete, it invokes the callback, passing it a status object.
 =item C<bind(PMC *host)>
 
 C<bind> binds a socket object to the port and address specified by an
-address object (the packed result of C<sockaddr>).
+address object (the result of C<getaddrinfo>).
 
 The asynchronous version takes an additional final PMC callback
 argument, and only returns a status object. When the bind operation is
@@ -273,8 +373,8 @@ bound socket object.]
 */
 
     METHOD bind(PMC *host) {
-        INTVAL res = Parrot_io_bind(INTERP, SELF, host);
-        RETURN(INTVAL res);
+        Parrot_io_socket_bind(INTERP, SELF, host);
+        RETURN(INTVAL 0);
     }
 
 /*
@@ -293,8 +393,8 @@ the socket object.
 */
 
     METHOD listen(INTVAL backlog) {
-        INTVAL res = Parrot_io_listen(INTERP, SELF, backlog);
-        RETURN(INTVAL res);
+        Parrot_io_socket_listen(INTERP, SELF, backlog);
+        RETURN(INTVAL 0);
     }
 
 /*
@@ -317,8 +417,78 @@ but continues to send new connection events until the socket is closed.]
 */
 
     METHOD accept() {
-        PMC * res = Parrot_io_accept(INTERP, SELF);
+        PMC * const res = Parrot_io_socket_accept(INTERP, SELF);
         RETURN(PMC * res);
+    }
+
+/*
+
+=item C<METHOD read(INTVAL bytes)>
+
+Read up to the given number of bytes from the socket and return them in a string.
+
+This method behaves always the same as recv(). Only if the socket is already closed
+return an empty string.
+
+=cut
+
+TODO: add setsockopt(level, option, value) for the pre-parrot 4.10 behavior, to receive
+larger buffers.
+
+The receive low-water mark (the SO_RCVLOWAT setsockopt option) determines the minimum
+amount of data that must be received before the read function is completed. If the read
+function times out, any data that was received is returned to the application even if the
+amount of data received is less than the receive low-water mark value.
+
+*/
+
+    METHOD read(INTVAL nb) {
+        STRING *buf;
+
+        if (Parrot_io_is_closed(INTERP, SELF))
+            RETURN(STRING * STRINGNULL);
+
+        buf = Parrot_io_read_s(INTERP, SELF, nb);
+
+        RETURN(STRING *buf);
+    }
+
+
+/*
+
+=item C<METHOD readline(STRING delimiter)>
+
+Read a line from the socket and return it in a string. If C<delimiter> is
+present, it is used to determine line endings instead of the default C<\n>.
+
+=cut
+
+*/
+
+    METHOD readline(STRING *delimiter    :optional,
+                    INTVAL has_delimiter :opt_flag) {
+
+        if (!has_delimiter)
+            delimiter = PARROT_SOCKET(SELF)->record_separator;
+        {
+            STRING *result = Parrot_io_readline_s(INTERP, SELF, delimiter);
+            RETURN(STRING *result);
+        }
+    }
+
+/*
+
+=item C<METHOD puts(STRING *buf)>
+
+Print the string to the socket.
+
+=cut
+
+*/
+
+    METHOD puts(STRING *buf) {
+        const INTVAL res = Parrot_io_write_s(INTERP, SELF, buf);
+        RETURN(INTVAL res);
     }
 
 /*

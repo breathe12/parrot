@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2001-2010, Parrot Foundation.
+Copyright (C) 2001-2015, Parrot Foundation.
 
 =head1 NAME
 
@@ -31,15 +31,6 @@ Dump the bytecode header only.
 
 Terse output.
 
-=item C<-D> C--debug> 1-7
-
-Display detailed packfile reader debugging information if
-F<include/parrot/packfile.h> enables TRACE_PACKFILE.
-
-  1  print general debug info
-  2  print alignment info
-  4  print values
-
 =item C<-o converted.pbc>
 
 Repacks a PBC file into the platform's native binary format for better
@@ -56,9 +47,59 @@ efficiency on reading non-native PBCs.
 */
 
 #include "parrot/parrot.h"
-#include "parrot/embed.h"
+#include "parrot/longopt.h"
 #include "parrot/oplib/ops.h"
 #include "parrot/oplib/core_ops.h"
+
+/* HEADERIZER HFILE: none */
+/* HEADERIZER BEGIN: static */
+/* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
+
+static void const_dump(PARROT_INTERP, ARGIN(const PackFile_Segment *segp))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2);
+
+static void disas_dump(PARROT_INTERP, ARGIN(const PackFile_Segment *self))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2);
+
+static void help(void);
+static void null_dir_dump(PARROT_INTERP,
+    ARGIN(const PackFile_Segment *self))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2);
+
+static void null_dump(PARROT_INTERP, ARGIN(const PackFile_Segment *self))
+        __attribute__nonnull__(2);
+
+static void nums_dump(PARROT_INTERP, ARGIN(const PackFile_Segment *self))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2);
+
+static void PackFile_header_dump(PARROT_INTERP, ARGIN(const PackFile *pf))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2);
+
+#define ASSERT_ARGS_const_dump __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(segp))
+#define ASSERT_ARGS_disas_dump __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(self))
+#define ASSERT_ARGS_help __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
+#define ASSERT_ARGS_null_dir_dump __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(self))
+#define ASSERT_ARGS_null_dump __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(self))
+#define ASSERT_ARGS_nums_dump __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(self))
+#define ASSERT_ARGS_PackFile_header_dump __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(pf))
+/* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
+/* HEADERIZER END: static */
 
 /*
 
@@ -71,10 +112,11 @@ Dump the constant table.
 */
 
 static void
-const_dump(PARROT_INTERP, const PackFile_Segment *segp)
+const_dump(PARROT_INTERP, ARGIN(const PackFile_Segment *segp))
 {
+    ASSERT_ARGS(const_dump)
     Parrot_io_printf(interp, "%Ss => [\n", segp->name);
-    PackFile_ConstTable_dump(interp, (const PackFile_ConstTable *)segp);
+    pf_const_dump(interp, (const PackFile_ConstTable *)segp);
     Parrot_io_printf(interp, "],\n");
 }
 
@@ -90,10 +132,11 @@ Disassemble and dump.
 */
 
 static void
-disas_dump(PARROT_INTERP, const PackFile_Segment *self)
+disas_dump(PARROT_INTERP, ARGIN(const PackFile_Segment *self))
 {
+    ASSERT_ARGS(disas_dump)
     const opcode_t *pc = self->data;
-    const PackFile_ByteCode_OpMapping *map = &((const PackFile_ByteCode *)self)->op_mapping;
+    const PackFile_ByteCode_OpMapping * const map = &((const PackFile_ByteCode *)self)->op_mapping;
     INTVAL i;
 
     Parrot_io_printf(interp, "%Ss => [ # %d ops at offs 0x%x\n",
@@ -101,19 +144,18 @@ disas_dump(PARROT_INTERP, const PackFile_Segment *self)
 
     for (i = 0; i < map->n_libs; i++) {
 
-        INTVAL j, lib_num, table_num;
-        PackFile_ByteCode_OpMappingEntry *entry = &map->libs[i];
-        Parrot_io_printf(interp, "  map #%d => [\n", i);
-        Parrot_io_printf(interp, "    oplib: \"%s\" version %d.%d.%d (%d ops)\n",
+        INTVAL j;
+        const PackFile_ByteCode_OpMappingEntry * const entry = &map->libs[i];
+        Parrot_io_printf(interp, "  map #"INTVAL_FMT" => [\n", i);
+        Parrot_io_printf(interp, "    oplib: \"%s\" version %d.%d (%ld ops)\n",
                 entry->lib->name,
-                entry->lib->major_version,
-                entry->lib->minor_version,
-                entry->lib->patch_version,
+                entry->lib->bc_major_version,
+                entry->lib->bc_minor_version,
                 entry->n_ops);
 
         for (j = 0; j < map->libs[i].n_ops; j++) {
-            lib_num    = entry->lib_ops[j];
-            table_num  = entry->table_ops[j];
+            const INTVAL lib_num   = entry->lib_ops[j];
+            const INTVAL table_num = entry->table_ops[j];
             Parrot_io_printf(interp, "    %08lx => %08lx (%s)\n", table_num, lib_num,
                     entry->lib->op_info_table[lib_num].full_name);
         }
@@ -123,16 +165,17 @@ disas_dump(PARROT_INTERP, const PackFile_Segment *self)
     while (pc < self->data + self->size) {
         /* n can't be const; the ADD_OP_VAR_PART macro increments it */
         size_t n = (size_t)interp->code->op_info_table[*pc]->op_count;
-        size_t i;
+        size_t j;
 
         /* trace_op_dump(interp, self->pf->src, pc); */
         Parrot_io_printf(interp, " %04x:  ", (int)(pc - self->data));
 
-        for (i = 0; i < 6; ++i)
-            if (i < n)
-                Parrot_io_printf(interp, "%08lx ", (unsigned long)pc[i]);
+        for (j = 0; j < 6; ++j) {
+            if (j < n)
+                Parrot_io_printf(interp, "%08lx ", (unsigned long)pc[j]);
             else
                 Parrot_io_printf(interp, "         ");
+        }
 
         Parrot_io_printf(interp, "%s\n",
                 interp->code->op_info_table[*pc]->full_name);
@@ -156,11 +199,12 @@ Disassembles and dumps op names and line numbers only.
 */
 
 static void
-nums_dump(PARROT_INTERP, const PackFile_Segment *self)
+nums_dump(PARROT_INTERP, ARGIN(const PackFile_Segment *self))
 {
+    ASSERT_ARGS(nums_dump)
     const STRING           *debug_name = Parrot_str_concat(interp, self->name,
             Parrot_str_new_constant(interp, "_DB"));
-    const PackFile_Segment *debug      = PackFile_find_segment(interp,
+    const PackFile_Segment *debug      = Parrot_pf_find_segment(interp,
                                             self->dir, debug_name, 1);
 
     opcode_t   * pc            = self->data;
@@ -171,7 +215,7 @@ nums_dump(PARROT_INTERP, const PackFile_Segment *self)
         /* n can't be const; the ADD_OP_VAR_PART macro increments it */
         size_t n = (size_t)op_info[*pc]->op_count;
 
-        Parrot_io_printf(interp, " %04x:  %s\n",
+        Parrot_io_printf(interp, " %04lx:  %s\n",
             *(debug_ops++), op_info[*pc]->full_name);
 
         ADD_OP_VAR_PART(interp, interp->code, pc, n);
@@ -191,8 +235,9 @@ Produces no output for the given segment type.
 */
 
 static void
-null_dump(SHIM_INTERP, const PackFile_Segment *self)
+null_dump(SHIM_INTERP, ARGIN(const PackFile_Segment *self))
 {
+    ASSERT_ARGS(null_dump)
     UNUSED(self);
 }
 
@@ -209,8 +254,9 @@ output for the directory itself.
 */
 
 static void
-null_dir_dump(PARROT_INTERP, const PackFile_Segment *self)
+null_dir_dump(PARROT_INTERP, ARGIN(const PackFile_Segment *self))
 {
+    ASSERT_ARGS(null_dir_dump)
     const PackFile_Directory * const dir = (const PackFile_Directory *)self;
     size_t i;
 
@@ -221,7 +267,7 @@ null_dir_dump(PARROT_INTERP, const PackFile_Segment *self)
 
 /*
 
-=item C<static void PackFile_header_dump(PARROT_INTERP, PackFile *pf)>
+=item C<static void PackFile_header_dump(PARROT_INTERP, const PackFile *pf)>
 
 Dump the header.
 
@@ -230,27 +276,31 @@ Dump the header.
 */
 
 static void
-PackFile_header_dump(PARROT_INTERP, PackFile *pf)
+PackFile_header_dump(PARROT_INTERP, ARGIN(const PackFile *pf))
 {
+    ASSERT_ARGS(PackFile_header_dump)
+    const PackFile_Header * const header = pf->header;
+
     Parrot_io_printf(interp, "HEADER => [\n");
-    Parrot_io_printf(interp, "\twordsize  = %d", pf->header->wordsize);
-    Parrot_io_printf(interp, "\t(interpreter's wordsize/INTVAL = %d/%d)\n",
+    Parrot_io_printf(interp, "\twordsize  = %d", header->wordsize);
+    Parrot_io_printf(interp, "\t(interpreter's wordsize/INTVAL = %lu/%lu)\n",
                      sizeof (opcode_t), sizeof (INTVAL));
-    Parrot_io_printf(interp, "\tbyteorder = %d", pf->header->byteorder);
+    Parrot_io_printf(interp, "\tbyteorder = %d", header->byteorder);
     Parrot_io_printf(interp, "\t(interpreter's byteorder       = %d)\n",
             PARROT_BIGENDIAN);
-    Parrot_io_printf(interp, "\tfloattype = %d", pf->header->floattype);
+    Parrot_io_printf(interp, "\tfloattype = %d", header->floattype);
     Parrot_io_printf(interp, "\t(interpreter's NUMVAL_SIZE     = %d)\n",
             NUMVAL_SIZE);
     Parrot_io_printf(interp, "\tparrot-version %d.%d.%d, "
             "bytecode-version %d.%d\n",
-            pf->header->major, pf->header->minor, pf->header->patch,
-            pf->header->bc_major, pf->header->bc_minor);
-    Parrot_io_printf(interp, "\tUUID: type = %d, size = %d",
-            pf->header->uuid_type, pf->header->uuid_size);
+            header->major, header->minor, header->patch,
+            header->bc_major, header->bc_minor);
 
-    if (pf->header->uuid_size)
-        Parrot_io_printf(interp, ", '%s'\n", pf->header->uuid_data);
+    Parrot_io_printf(interp, "\tUUID: type = %d, size = %d",
+            header->uuid_type, header->uuid_size);
+
+    if (header->uuid_size > 0)
+        Parrot_io_printf(interp, ", '%s'\n", header->uuid_data);
     else
         Parrot_io_printf(interp, "\n");
 
@@ -259,7 +309,7 @@ PackFile_header_dump(PARROT_INTERP, PackFile *pf)
             pf->need_wordsize  ? "**need**" : "no",
             pf->fetch_nv       ? "**need**" : "no");
 
-    Parrot_io_printf(interp, "\tdirformat = %d\n", pf->header->dir_format);
+    Parrot_io_printf(interp, "\tdirformat = %ld\n", header->dir_format);
     Parrot_io_printf(interp, "]\n");
 }
 
@@ -274,7 +324,8 @@ Print out the user help info.
 
 */
 
-static void help(void)
+static void
+help(void)
 {
     printf("pbc_dump - dump or convert parrot bytecode (PBC) files\n");
     printf("usage:\n");
@@ -285,13 +336,6 @@ static void help(void)
     printf("\t-h ... dump header only\n");
     printf("\t-t ... terse output\n");
     printf("\t-n ... show ops and line numbers only\n");
-
-#if TRACE_PACKFILE
-    printf("\t-D<1-7> --debug debug output\n");
-    printf("\t   1 general info\n");
-    printf("\t   2 alignment\n");
-    printf("\t   4 values\n");
-#endif
 
     printf("\t-o converted.pbc ... repacks a PBC file into "
            "the platform's native\n");
@@ -307,11 +351,8 @@ static struct longopt_opt_decl opt_options[] = {
     { 't', 't', OPTION_optional_FLAG, { "--terse"       } },
     { 'n', 'n', OPTION_optional_FLAG, { "--line-nums"   } },
     { 'd', 'd', OPTION_optional_FLAG, { "--disassemble" } },
-    { 'o', 'o', OPTION_required_FLAG, { "--output"      } }
-
-#if TRACE_PACKFILE
-    { 'D', 'D', OPTION_required_FLAG, { "--debug"       } },
-#endif
+    { 'o', 'o', OPTION_required_FLAG, { "--output"      } },
+    { 0,    0,  OPTION_optional_FLAG, { NULL            } }
 };
 
 
@@ -328,8 +369,10 @@ The run loop. Process the command-line arguments and dump accordingly.
 int
 main(int argc, const char **argv)
 {
-    PackFile   *pf;
-    Interp     *interp;
+    Parrot_PackFile  pfpmc;
+    PackFile        *pf;
+    Interp          *interp;
+    Parrot_String   infilename;
 
     const char *file            = NULL;
     int         terse           = 0;
@@ -345,18 +388,13 @@ main(int argc, const char **argv)
     if (argc < 2)
         help();
 
-    interp = Parrot_new(NULL);
+    interp = Parrot_interp_new(NULL);
 
     /* init and set top of stack */
-    Parrot_init_stacktop(interp, &status);
+    Parrot_interp_init_stacktop(interp, &status);
 
-    while ((status = longopt_get(interp, argc, argv, opt_options, &opt)) > 0) {
+    while ((status = Parrot_longopt_get(argc, argv, opt_options, &opt)) > 0) {
         switch (opt.opt_id) {
-#if TRACE_PACKFILE
-          case 'D':
-            options += atoi(opt.opt_arg) << 2;
-            break;
-#endif
           case 'h':
             options += PFOPT_HEADERONLY;
             break;
@@ -386,17 +424,24 @@ main(int argc, const char **argv)
     argc -= opt.opt_index;
     argv += opt.opt_index;
 
-    pf = Parrot_pbc_read(interp, *argv, options);
+    infilename = Parrot_str_new(interp, *argv, 0);
+    pf = Parrot_pf_read_pbc_file(interp, infilename);
 
-    if (!pf) {
+    if (pf == NULL) {
         printf("Can't read PBC\n");
         return 1;
     }
 
-    Parrot_pbc_load(interp, pf);
+    if (options & PFOPT_HEADERONLY) {
+        PackFile_header_dump(interp, pf);
+        Parrot_x_exit(interp, 0);
+    }
+
+    pfpmc = Parrot_pf_get_packfile_pmc(interp, pf, infilename);
+    Parrot_pf_set_current_packfile(interp, pfpmc);
 
     if (convert) {
-        size_t   size  = PackFile_pack_size(interp,
+        const size_t size = Parrot_pf_pack_size(interp,
                             interp->code->base.pf) * sizeof (opcode_t);
         opcode_t *pack = (opcode_t *)Parrot_gc_allocate_memory_chunk(interp,
                                         size);
@@ -407,7 +452,7 @@ main(int argc, const char **argv)
             exit(EXIT_FAILURE);
         }
 
-        PackFile_pack(interp, interp->code->base.pf, pack);
+        Parrot_pf_pack(interp, interp->code->base.pf, pack);
 
         if (STREQ(file, "-"))
             fp = stdout;
@@ -451,7 +496,7 @@ main(int argc, const char **argv)
     }
 
     /* do a directory dump, which dumps segs then */
-    PackFile_Segment_dump(interp, &pf->directory.base);
+    Parrot_pf_dump_segment(interp, &pf->directory.base);
 
     Parrot_x_exit(interp, 0);
 }

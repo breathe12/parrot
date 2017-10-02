@@ -108,7 +108,7 @@ unescaped newlines.
 
 	.local pmc output
 	output = self.'output'()
-	output.'puts'( message )
+	output.'print'( message )
 .end
 
 .sub escape_newlines :method
@@ -149,7 +149,7 @@ unescaped newlines.
 
 	.local string new_line
 	new_line = '# '
-	concat new_line, line
+	new_line = concat new_line, line
 	lines[i] = new_line
 
   LINE_OK:
@@ -158,7 +158,7 @@ unescaped newlines.
 	if i < num_lines goto LOOP
 
 	message = join '', lines
-	concat message, "\n"
+	message = concat message, "\n"
 
 	.return( message )
 .end
@@ -187,24 +187,20 @@ unescaped newlines.
 	first_char = substr message, 0, 1
 	if first_char == '#' goto WRITE_MESSAGE
 
-	first_char = '# '
-	concat first_char, message
-	message = first_char
+	message = concat '# ', message
 
   WRITE_MESSAGE:
 	.local pmc diag_output
 	diag_output = self.'diag_output'()
-	.tailcall diag_output.'puts'( message )
+	.tailcall diag_output.'print'( message )
 .end
 
 =back
 
 =head1 AUTHOR
 
-Written and maintained by chromatic, C<< chromatic at wgz dot org >>, based on
-the Perl 6 port he wrote, based on the original Perl 5 version he wrote with
-ideas from Michael G. Schwern.  Please send patches, feedback, and suggestions
-to the Perl 6 internals mailing list.
+Please send patches, feedback, and suggestions to the Perl 6 internals mailing
+list.
 
 =head1 COPYRIGHT
 

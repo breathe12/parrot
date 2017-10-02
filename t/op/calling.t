@@ -1,12 +1,12 @@
 #!perl
-# Copyright (C) 2001-2009, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 use strict;
 use warnings;
 use lib qw( . lib ../lib ../../lib );
 
 use Test::More;
-use Parrot::Test tests => 99;
+use Parrot::Test tests => 104;
 
 =head1 NAME
 
@@ -23,6 +23,7 @@ Tests Parrot calling conventions.
 =cut
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "set_args - parsing" );
+.pcc_sub :main main:
     noop
     set_args "0, 0", P0, I0
     print "Ok 1\n"
@@ -35,7 +36,7 @@ Ok 2
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "var_args - parsing" );
-.pcc_sub main:
+.pcc_sub :main main:
     print "Ok 1\n"
     set_args "0, 0", P0, I0
     find_name P1, "foo"
@@ -61,7 +62,7 @@ Ok 6
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "call - i, ic" );
-.pcc_sub main:
+.pcc_sub :main main:
     set I16, 77
     set_args "0, 0", 42, I16
     find_name P1, "foo"
@@ -82,7 +83,7 @@ back
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "call - i, ic, return i, ic" );
-.pcc_sub main:
+.pcc_sub :main main:
     set I16, 77
     set_args "0, 0", 42, I16
     find_name P1, "foo"
@@ -111,7 +112,7 @@ back
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "call - i, ic, return i, ic - adjust sig" );
-.pcc_sub main:
+.pcc_sub :main main:
     set I16, 77
     set_args "0, 0", 42, I16
     find_name P1, "foo"
@@ -140,7 +141,7 @@ back
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "all together now" );
-.pcc_sub main:
+.pcc_sub :main main:
     set I16, 77
     set N16, 2.3
     set S16, "ok 1\n"
@@ -193,7 +194,7 @@ ok 4
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "flatten arg" );
-.pcc_sub main:
+.pcc_sub :main main:
     new P16, 'String'
     set P16, "ok 1\n"
     new P17, 'ResizablePMCArray'
@@ -225,7 +226,7 @@ back
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "slurpy param" );
-.pcc_sub main:
+.pcc_sub :main main:
     new P16, 'String'
     set P16, "ok 1\n"
     new P17, 'String'
@@ -256,6 +257,28 @@ ok 3
 back
 OUTPUT
 
+pir_error_output_like( <<'CODE', qr/Invalid operation on null string/, "return :flat" );
+.sub main :main
+  .local string s, r
+  .local pmc arr
+
+  say "get"
+  s = s_get()
+  r = substr s, 0, 1
+  print "'"
+  print r
+  print "'"
+  say " done"
+.end
+
+.sub s_get
+  .local pmc arr
+  arr = new ["ResizableStringArray"]
+  # push arr, "xy"
+  .return(arr :flat )
+.end
+CODE
+
 pir_output_is( <<'CODE', <<'OUTPUT', "use it in PIR" );
 .sub main :main
     $P0 = new 'String'
@@ -274,7 +297,7 @@ hello
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "flatten + slurpy param" );
-.pcc_sub main:
+.pcc_sub :main main:
     new P16, 'String'
     set P16, "ok 1\n"
     new P19, 'ResizablePMCArray'
@@ -576,7 +599,7 @@ CODE
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "get_param later" );
-.pcc_sub main:
+.pcc_sub :main main:
     set I16, 77
     set_args "0, 0", 42, I16
     find_name P1, "foo"
@@ -1214,6 +1237,22 @@ CODE
 /too many positional arguments: 5 passed, 4 expected/
 OUTPUT
 
+pir_error_output_like( <<'CODE', <<'OUTPUT', "too many args and :optional" );
+.sub _fn1
+    .param pmc one
+    .param pmc two
+    .param pmc opt        :optional
+    .param int have_opt   :opt_flag
+.end
+.sub main :main
+    .include "errors.pasm"
+    errorson .PARROT_ERRORS_PARAM_COUNT_FLAG
+    $P35 = _fn1(1, 2, 3, 4)
+.end
+CODE
+/too many positional arguments: 4 passed, 3 expected/
+OUTPUT
+
 pir_error_output_like( <<'CODE', <<'OUTPUT', "too few args via :flat" );
 .sub _fn1
     .param int arg1
@@ -1268,6 +1307,7 @@ OUTPUT
 pir_output_is( <<'CODE', <<'OUTPUT', "tailcall to NCI - 2" );
 .sub main :main
     $P0 = eval("print \"Foo!\\n\"")
+    $P0 = $P0.'first_sub_in_const_table'()
     $P0()
     end
 .end
@@ -1283,7 +1323,7 @@ CODE
 Foo!
 OUTPUT
 
-# bug - repeated calls to eval'd sub crashes (pmichaud, 2005.10.27)
+# fixed bug - repeated calls to eval'd sub crashes (pmichaud, 2005.10.27)
 pir_output_is( <<'CODE', <<'OUTPUT', "repeated calls to eval'd sub" );
 .sub main :main
     .local string s
@@ -1629,7 +1669,10 @@ ok 1
 ok 2
 OUTPUT
 
-pir_output_is( <<'CODE', <<'OUTPUT', "newclosure followed by tailcall" );
+TODO: {
+  local $TODO = 'bad -O1 test 63' if $ENV{TEST_PROG_ARGS}
+    and $ENV{TEST_PROG_ARGS} =~ /-O[12]/;
+  pir_output_is( <<'CODE', <<'OUTPUT', "newclosure followed by tailcall" );
 ## regression test for newclosure followed by tailcall, which used to recycle
 ## the context too soon.  it looks awful because (a) the original version was
 ## produced by a compiler, and (b) in order to detect regression, we must force
@@ -1672,6 +1715,7 @@ L3:
 .end
 
 
+# TODO -O1 error
 .sub _try_it
         .param int n
         .param pmc closure
@@ -1694,6 +1738,7 @@ not 2
 [in test]
 got 9.
 OUTPUT
+}
 
 pir_output_is( <<'CODE', <<'OUTPUT', "call evaled vtable code" );
 .sub main :main
@@ -1721,7 +1766,7 @@ CODE
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "named - 1" );
-.pcc_sub main:
+.pcc_sub :main main:
     set_args "0x200, 0, 0x200, 0", "b", 10, "a", 20
     find_name P1, "foo"
     invokecc P1
@@ -1741,7 +1786,7 @@ ok
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "named - 2 flatten" );
-.pcc_sub main:
+.pcc_sub :main main:
     new P0, 'Hash'
     set P0['a'], 20
     set P0['b'], 10
@@ -1794,7 +1839,7 @@ ok
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "named - 3 slurpy hash" );
-.pcc_sub main:
+.pcc_sub :main main:
     set_args "0x200, 0, 0x200, 0,0x200, 0", "a", 10, "b", 20, 'c', 30
     find_name P1, "foo"
     invokecc P1
@@ -1825,7 +1870,7 @@ ok
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "named - 4 positional -> named" );
-.pcc_sub main:
+.pcc_sub :main main:
     set_args  "0, 0, 0", 10, 20, 30
     find_name P1, "foo"
     invokecc P1
@@ -1847,7 +1892,7 @@ ok
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "named - 5 slurpy array -> named" );
-.pcc_sub main:
+.pcc_sub :main main:
     set_args  "0, 0, 0, 0x200, 0, 0x200, 0", 10, 20, 30, 'a', 40, 'b', 50
     find_name P1, "foo"
     invokecc P1
@@ -2290,7 +2335,7 @@ CODE
 OUTPUT
 
 pir_error_output_like( <<'CODE', <<'OUTPUT', "unexpected positional arg" );
-.sub 'main'
+.sub 'main' :main
     'foo'('abc', 'def', 'ghi'=>1)
 .end
 
@@ -2303,7 +2348,7 @@ CODE
 OUTPUT
 
 pir_error_output_like( <<'CODE', <<'OUTPUT', "unexpected positional arg" );
-.sub 'main'
+.sub 'main' :main
     'foo'('abc', 'def'=>1, 'ghi', 'jkl'=>1)
 .end
 
@@ -2434,7 +2479,7 @@ CODE
 2
 OUTPUT
 
-pir_error_output_like( <<'CODE', <<'OUTPUT', "arg mismatch with no params", todo=> 'TT #1033' );
+pir_error_output_like( <<'CODE', <<'OUTPUT', "arg mismatch with no params", todo=> 'GH #600' );
 .sub main :main
   foo(1)
 .end
@@ -2447,7 +2492,7 @@ OUTPUT
 
 # See Rakudo queue http://rt.perl.org/rt3/Ticket/Display.html?id=62730
 pir_output_is( <<'CODE', <<'OUTPUT', "named from register, not constant" );
-.sub 'main'
+.sub 'main' :main
     $S0 = 'foo'
     example('foo' => 42)              # normal named parameter
     example( $S0  => 42)              # parameter named by non-const register
@@ -2474,10 +2519,15 @@ OUTPUT
 
 # See Rakudo queue http://rt.perl.org/rt3/Ticket/Display.html?id=62730
 pir_output_is( <<'CODE', <<'OUTPUT', "Handling :flat of empty arguments" );
-.sub 'main'
+.sub 'main' :main
     $P0   = new ['Undef']
     ($P0) = foo()
+    unless null $P0 goto L1
+    $S0 = "PMCNULL"
+    goto L2
+  L1:
     $S0   = typeof $P0
+  L2:
     say $S0
 .end
 
@@ -2489,7 +2539,7 @@ pir_output_is( <<'CODE', <<'OUTPUT', "Handling :flat of empty arguments" );
 .end
 CODE
 ResizablePMCArray
-Undef
+PMCNULL
 OUTPUT
 
 pir_output_is( <<'CODE', <<'OUTPUT', "Tailcall from vtable" );
@@ -2522,7 +2572,7 @@ OUTPUT
 
 pir_output_is( <<'CODE', <<'OUTPUT', "methodtailcall 1 TT#133" );
 
-.sub main
+.sub main :main
     say "main"
     $P0 = foo() ## fails :-(
     $P0 = bar()
@@ -2591,6 +2641,42 @@ p3
 p1
 p2
 p1
+OUTPUT
+
+pir_error_output_like( <<'CODE', <<'OUTPUT', "Don't coerce NULL PMCs into values");
+.sub main :main
+    foo($P0)
+.end
+
+.sub foo
+    .param string arg
+.end
+CODE
+/Null PMC access/
+OUTPUT
+
+pir_error_output_like( <<'CODE', <<'OUTPUT', "Don't coerce NULL PMCs into values");
+.sub main :main
+    foo($P0)
+.end
+
+.sub foo
+    .param int arg
+.end
+CODE
+/Null PMC access/
+OUTPUT
+
+pir_error_output_like( <<'CODE', <<'OUTPUT', "Don't coerce NULL PMCs into values");
+.sub main :main
+    foo($P0)
+.end
+
+.sub foo
+    .param num arg
+.end
+CODE
+/Null PMC access/
 OUTPUT
 
 # Local Variables:

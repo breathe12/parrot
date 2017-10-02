@@ -1,6 +1,6 @@
-# Copyright (C) 2007-2009, Parrot Foundation.
+# Copyright (C) 2007-2012, Parrot Foundation.
 
-=head1 Config::JSON
+=head1 DESCRIPTION
 
 Provides a simple wrapper to read and write JSON config files.
 
@@ -33,6 +33,7 @@ If the data is not valid, an exception will be thrown.
     throw $P0
 
   slurp_file:
+    fh.'encoding'('utf8')
     text = fh.'readall'()
 
     # Convert the text to an object and return it.

@@ -1,10 +1,12 @@
 #!./parrot-nqp
-# Copyright (C) 2010, Parrot Foundation.
+# Copyright (C) 2010-2012, Parrot Foundation.
 
 pir::load_bytecode("opsc.pbc");
 pir::load_bytecode("nqp-setting.pbc");
 
-plan(7);
+Q:PIR {
+    .include "test_more.pir"
+};
 
 my $oplib := Ops::OpLib.new;
 my @files := <
@@ -15,30 +17,26 @@ my @files := <
 my $f := Ops::File.new(:oplib($oplib), |@files, :core(1));
 
 my @ops := $f.ops;
-# 84 core
+# 82 core
 # 116 math
 # We can generate more than 1 Ops::Op per op due args expansion.
-say( "# Parsed " ~ +@ops);
-# There is more than 200 ops in this 2 files.
-# Feel free to update number if you change them.
-ok(+@ops == 264, "Ops parsed correctly");
-say('# ' ~ +@ops);
+diag( "Parsed " ~ +@ops);
 
 my $op := @ops[0];
 #_dumper($op);
 # First op should be C<end> and has code 0.
-ok($op.name eq 'end',   "First op is end");
-ok($op<code> == 0,      "... with code 0");
+is($op.name, 'end',   "First op is correct");
+is($op<code>, 0,      "... with code 0");
 
 $op := @ops[(+@ops)-1];
-ok($op.name eq 'sqrt',  "Last op is tanh");
-say('# ' ~ $op.name);
-ok($op<code> > 84 + 116,    "... with non zero code");
+ok($op<code> > 84 + 116,    "Last op has non zero code");
 
 my $version := join(' ', |$f.version);
-ok( $version ~~ /^\d+ \s \d+ \s \d+$/, "Version parsed");
-say("# $version");
+ok( $version ~~ /^\d+ \s \d+$/, "Version parsed");
+diag($version);
 
 ok( $f.preamble ~~ /pmc_parrotlibrary.h/, "Preamble preserved");
+
+done_testing();
 
 # vim: expandtab shiftwidth=4 ft=perl6:

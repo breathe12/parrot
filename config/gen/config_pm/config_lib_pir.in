@@ -1,8 +1,9 @@
-# Copyright (C) 2004-2009, Parrot Foundation.
+# Copyright (C) 2004-2014, Parrot Foundation.
 
 .include 'datatypes.pasm'
+.include 'parrot_version.pir'
 
-.sub 'main'
+.sub 'main' :main
     get_params "(0)", $P5
     set $I10, $P5     # argv
     set $I11, 0      # flag
@@ -24,8 +25,9 @@ no_arg:
     branch freeze_config
 is_install:
     set $P0["installed"], "1"
-freeze_config:
+    @NOINSTALL@
 
+freeze_config:
     freeze $S0, $P0
     print $S0
 .end

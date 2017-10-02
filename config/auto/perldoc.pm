@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2008, Parrot Foundation.
+# Copyright (C) 2001-2015, Parrot Foundation.
 
 =head1 NAME
 
@@ -20,6 +20,7 @@ use strict;
 use warnings;
 
 use File::Temp qw (tempfile );
+use File::Spec qw (catfile );
 use base qw(Parrot::Configure::Step);
 use Parrot::Configure::Utils ':auto';
 
@@ -35,14 +36,27 @@ sub _init {
 sub runstep {
     my ( $self, $conf ) = @_;
 
-    my $slash = $conf->data->get('slash');
-    my $cmd = $conf->data->get('scriptdirexp_provisional') . $slash . q{perldoc};
+    my $cmd = File::Spec->catfile($conf->data->get('scriptdirexp_provisional'), q{perldoc});
     my ( $fh, $filename ) = tempfile( UNLINK => 1 );
-    my $content = capture_output("$cmd -ud $filename perldoc") || undef;
+    # try to execute 'perldoc perldoc' || 'perldoc Pod::Perldoc' to
+    # read the documentation of perldoc
+    $conf->debug("$cmd\n");
+    my $content = capture_output("$cmd -ud $filename perldoc")
+      || capture_output("$cmd -ud $filename Pod::Perldoc")
+      || undef;
 
+    $conf->debug($content ? substr($content,0,100)." ...\n" : "<empty content>\n");
+    if (!defined $content and $conf->data->get_p5('usecperl')) {
+        $cmd = File::Spec->catfile($conf->data->get('scriptdirexp_provisional'), q{cperldoc});
+        $conf->debug("$cmd\n");
+        $content = capture_output("$cmd -ud $filename perldoc")
+          || capture_output("$cmd -ud $filename Pod::Perldoc")
+          || undef;
+    }
     return 1 unless defined( $self->_initial_content_check($conf, $content) );
 
     my $version = $self->_analyze_perldoc($cmd, $filename, $content);
+    $conf->debug("version: $version");
 
     _handle_version($conf, $version, $cmd);
 
@@ -52,9 +66,9 @@ sub runstep {
 
 E_NOTE
 
-    opendir OPS, 'src/ops' or die "opendir ops: $!";
-    my @ops = sort grep { !/^\./ && /\.ops$/ } readdir OPS;
-    closedir OPS;
+    opendir my $OPS, 'src/ops' or die "opendir ops: $!";
+    my @ops = sort grep { !/^\./ && /\.ops$/ } readdir $OPS;
+    closedir $OPS;
 
     my $TEMP_pod = join q{ } =>
         map { my $t = $_; $t =~ s/\.ops$/.pod/; "ops/$t" } @ops;
@@ -64,22 +78,12 @@ E_NOTE
     foreach my $ops (@ops) {
         my $pod = $ops;
         $pod =~ s/\.ops$/.pod/;
-        if ( $new_perldoc ) {
-            $TEMP_pod_build .= <<"END"
+        $TEMP_pod_build .= <<"END";
 ops/$pod: ../src/ops/$ops
-\t\$(PERLDOC_BIN) -ud ops/$pod ../src/ops/$ops
+\t\$(PODEXTRACT) ../src/ops/$ops ops/$pod
 \t\$(CHMOD) 0644 ops/$pod
-
+\t\$(ADDGENERATED) "docs/\$\@" "[doc]"
 END
-        }
-        else {
-            $TEMP_pod_build .= <<"END"
-ops/$pod: ../src/ops/$ops
-\t\$(PERLDOC_BIN) -u ../ops/$ops > ops/$pod
-\t\$(CHMOD) 0644 ../ops/$pod
-
-END
-        }
     }
 
     $conf->data->set(
@@ -148,15 +152,19 @@ sub _handle_no_perldoc {
     return 0;
 }
 
+sub _handle_cperldoc {
+    my $self = shift;
+    $self->set_result('yes, cperldoc');
+    return 1;
+}
+
 sub _handle_version {
     my ($conf, $version, $cmd) = @_;
     $conf->data->set(
         has_perldoc => $version != 0 ? 1 : 0,
         new_perldoc => $version == 2 ? 1 : 0
     );
-
     $conf->data->set( perldoc => $cmd ) if $version;
-
     return 1;
 }
 

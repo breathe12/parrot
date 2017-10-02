@@ -1,5 +1,5 @@
 /* thread.h
- *  Copyright (C) 2001-2007, Parrot Foundation.
+ *  Copyright (C) 2001-2012, Parrot Foundation.
  *  Overview:
  *     This is the api header for the thread primitives
  *  Data Structure and Algorithms:
@@ -11,60 +11,34 @@
 #ifndef PARROT_THREAD_H_GUARD
 #define PARROT_THREAD_H_GUARD
 
-#  include "parrot/parrot.h"
-#  include "parrot/atomic.h"
+#include "parrot/parrot.h"
 
-#ifndef PARROT_HAS_THREADS
-
-#  define LOCK(m)
-#  define UNLOCK(m)
-#  define COND_WAIT(c, m)
-#  define COND_TIMED_WAIT(c, m, t)
-#  define COND_SIGNAL(c)
-#  define COND_BROADCAST(c)
-
-#  define MUTEX_INIT(m)
-#  define MUTEX_DESTROY(m)
-
-#  define COND_INIT(c)
-#  define COND_DESTROY(c)
-
-#  define THREAD_CREATE_DETACHED(t, func, arg)
-#  define THREAD_CREATE_JOINABLE(t, func, arg)
-
-#  define JOIN(t, ret)
-#  define DETACH(t)
-
-#  define CLEANUP_PUSH(f, a)
-#  define CLEANUP_POP(a)
-
-#  define Parrot_mutex int
-#  define Parrot_cond int
-#  define Parrot_thread int
-
-typedef void (*Cleanup_Handler)(void *);
-
-#  if ! PARROT_HAS_TIMESPEC
-struct timespec {
-    time_t tv_sec;
-    long tv_nsec;
-};
-#  endif /* PARROT_HAS_TIMESPEC */
-
+#ifdef PARROT_HAS_THREADS
+#  ifdef _WIN32
+#    include "parrot/thr_windows.h"
+#  else
+#    include "parrot/thr_pthread.h"
+#  endif
+#else
+#  include   "parrot/thr_none.h"
 #endif /* PARROT_HAS_THREADS */
+
+#include "parrot/atomic.h"
+
+#define MAX_THREADS 16
 
 #ifndef YIELD
 #  define YIELD
 #endif /* YIELD */
 
 typedef enum {
-    THREAD_STATE_JOINABLE,              /* default */
-    THREAD_STATE_DETACHED = 0x01,       /* i.e. non-joinable */
-    THREAD_STATE_JOINED   = 0x02,       /* JOIN was issued */
-    THREAD_STATE_FINISHED = 0x04,        /* the thread function has ended */
-    THREAD_STATE_NOT_STARTED = 0x08,     /* the thread wasn't started */
-    THREAD_STATE_SUSPENDED_GC = 0x10,     /* suspended for GC on request */
-    THREAD_STATE_GC_WAKEUP = 0x20,      /* the thread is waiting on its condition
+    THREAD_STATE_JOINABLE,             /* default */
+    THREAD_STATE_DETACHED     = 0x01,  /* i.e. non-joinable */
+    THREAD_STATE_JOINED       = 0x02,  /* JOIN was issued */
+    THREAD_STATE_FINISHED     = 0x04,  /* the thread function has ended */
+    THREAD_STATE_NOT_STARTED  = 0x08,  /* the thread wasn't started */
+    THREAD_STATE_SUSPENDED_GC = 0x10,  /* suspended for GC on request */
+    THREAD_STATE_GC_WAKEUP    = 0x20,  /* the thread is waiting on its condition
                                            variable, and will do a GC run if
                                            it is woken up and marked as suspended
                                            for GC */
@@ -77,13 +51,10 @@ typedef enum {
  * per interpreter thread data structure
  */
 typedef struct _Thread_data {
-    Parrot_thread       thread;         /* pthread_t or such */
+    Parrot_thread       thread;          /* pthread_t or such */
     INTVAL              state;
-    int                 wants_shared_gc; /* therad is trying to
-                                            do a shared GC run */
-    UINTVAL             tid;            /* 0.. n-1 idx in interp array */
-
-    Parrot_Interp       joiner;         /* thread that is trying to join this */
+    UINTVAL             tid;             /* 0.. n-1 idx in interp array */
+    Parrot_Interp       main_interp;
 
     /* for wr access to interpreter e.g. for GC
      * if only used for GC the lock could be in the arena
@@ -96,9 +67,6 @@ typedef struct _Thread_data {
      * of sleeping
      */
     Parrot_cond  interp_cond;
-
-    /* COW'd constant tables */
-    Hash             *const_tables;
 } Thread_data;
 
 #  define LOCK_INTERPRETER(interp) \
@@ -119,13 +87,12 @@ typedef struct _Thread_data {
             COND_DESTROY((interp)->thread_data->interp_cond); \
         } while (0)
 
-
 /*
  * this global mutex protects the list of interpreters
  */
-VAR_SCOPE Parrot_mutex                  interpreter_array_mutex;
-VAR_SCOPE Interp          ** interpreter_array;
-VAR_SCOPE size_t                        n_interpreters;
+VAR_SCOPE Parrot_mutex    interpreter_array_mutex;
+VAR_SCOPE Interp       ** interpreter_array;
+VAR_SCOPE size_t          n_interpreters;
 
 typedef enum {
     THREAD_GC_STAGE_NONE,
@@ -147,137 +114,145 @@ VAR_SCOPE Shared_gc_info *shared_gc_info;
 /* HEADERIZER BEGIN: src/thread.c */
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 
-PARROT_EXPORT
-void Parrot_shared_gc_block(PARROT_INTERP)
-        __attribute__nonnull__(1);
-
-PARROT_EXPORT
-void Parrot_shared_gc_unblock(PARROT_INTERP)
-        __attribute__nonnull__(1);
-
-PARROT_EXPORT
+void Parrot_clone_code(Parrot_Interp d, Parrot_Interp s);
+int Parrot_get_num_threads(PARROT_INTERP);
+int Parrot_set_num_threads(PARROT_INTERP, INTVAL number_of_threads);
 PARROT_CANNOT_RETURN_NULL
-PARROT_WARN_UNUSED_RESULT
-PMC * pt_thread_create(PARROT_INTERP, INTVAL type, INTVAL clone_flags)
+PMC * Parrot_thread_create(PARROT_INTERP, INTVAL type, INTVAL clone_flags)
         __attribute__nonnull__(1);
 
-void pt_add_to_interpreters(PARROT_INTERP,
-    ARGIN_NULLOK(Parrot_Interp new_interp))
-        __attribute__nonnull__(1);
-
-void pt_clone_code(Parrot_Interp d, Parrot_Interp s);
-void pt_clone_globals(Parrot_Interp d, Parrot_Interp s);
-void pt_free_pool(PARROT_INTERP)
-        __attribute__nonnull__(1);
-
-void pt_gc_mark_root_finished(PARROT_INTERP)
-        __attribute__nonnull__(1);
-
-void pt_gc_start_mark(PARROT_INTERP)
-        __attribute__nonnull__(1);
-
-void pt_gc_stop_mark(PARROT_INTERP)
-        __attribute__nonnull__(1);
-
-void pt_join_threads(PARROT_INTERP)
-        __attribute__nonnull__(1);
-
-PARROT_CAN_RETURN_NULL
-PMC * pt_shared_fixup(PARROT_INTERP, ARGMOD(PMC *pmc))
+PARROT_CANNOT_RETURN_NULL
+PMC* Parrot_thread_create_local_sub(PARROT_INTERP,
+    ARGIN(Parrot_Interp const thread),
+    ARGIN(PMC *pmc))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2)
-        FUNC_MODIFIES(*pmc);
+        __attribute__nonnull__(3);
 
-void pt_suspend_self_for_gc(PARROT_INTERP)
-        __attribute__nonnull__(1);
-
-int pt_thread_create_run(PARROT_INTERP,
-    INTVAL type,
-    INTVAL clone_flags,
-    ARGIN(PMC *sub),
-    ARGIN_NULLOK(PMC *arg))
+PARROT_CANNOT_RETURN_NULL
+PMC* Parrot_thread_create_local_task(PARROT_INTERP,
+    ARGIN(Parrot_Interp const thread_interp),
+    ARGIN(PMC *task))
         __attribute__nonnull__(1)
-        __attribute__nonnull__(4);
+        __attribute__nonnull__(2)
+        __attribute__nonnull__(3);
 
-void pt_thread_detach(UINTVAL tid);
-PARROT_CAN_RETURN_NULL
-PMC* pt_thread_join(ARGIN(Parrot_Interp parent), UINTVAL tid)
+PARROT_CANNOT_RETURN_NULL
+PMC* Parrot_thread_create_proxy(PARROT_INTERP,
+    ARGIN(Parrot_Interp const thread),
+    ARGIN(PMC *pmc))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        __attribute__nonnull__(3);
+
+int Parrot_thread_get_free_threads_array_index(PARROT_INTERP);
+PARROT_CANNOT_RETURN_NULL
+Interp** Parrot_thread_get_threads_array(PARROT_INTERP);
+
+void Parrot_thread_init_threads_array(PARROT_INTERP)
         __attribute__nonnull__(1);
 
-void pt_thread_kill(UINTVAL tid);
-void pt_thread_prepare_for_run(Parrot_Interp d, NULLOK(Parrot_Interp s));
-int pt_thread_run(PARROT_INTERP,
+void Parrot_thread_insert_thread(PARROT_INTERP,
+    ARGIN(Interp* thread),
+    int index)
+        __attribute__nonnull__(2);
+
+PARROT_CAN_RETURN_NULL
+PMC * Parrot_thread_make_local_copy(PARROT_INTERP,
+    ARGIN(Parrot_Interp from),
+    ARGIN(PMC *arg))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        __attribute__nonnull__(3);
+
+void Parrot_thread_notify_thread(PARROT_INTERP)
+        __attribute__nonnull__(1);
+
+void Parrot_thread_notify_threads(PARROT_INTERP);
+int Parrot_thread_run(PARROT_INTERP,
     ARGMOD(PMC *thread_interp_pmc),
-    ARGIN(PMC *sub),
+    PMC *sub,
     ARGIN_NULLOK(PMC *arg))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2)
-        __attribute__nonnull__(3)
         FUNC_MODIFIES(*thread_interp_pmc);
 
-void pt_thread_wait_with(PARROT_INTERP, ARGMOD(Parrot_mutex *mutex))
+void Parrot_thread_schedule_task(PARROT_INTERP,
+    ARGIN(Interp *thread_interp),
+    ARGIN(PMC *task))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2)
-        FUNC_MODIFIES(*mutex);
+        __attribute__nonnull__(3);
 
-void pt_thread_yield(void);
 PARROT_CAN_RETURN_NULL
-PMC * pt_transfer_sub(
-    ARGOUT(Parrot_Interp d),
-    ARGIN(Parrot_Interp s),
+PMC * Parrot_thread_transfer_sub(
+    ARGOUT(Parrot_Interp destination),
+    ARGIN(Parrot_Interp source),
     ARGIN(PMC *sub))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2)
         __attribute__nonnull__(3)
-        FUNC_MODIFIES(d);
+        FUNC_MODIFIES(destination);
 
-#define ASSERT_ARGS_Parrot_shared_gc_block __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+void Parrot_thread_wait_for_notification(PARROT_INTERP)
+        __attribute__nonnull__(1);
+
+#define ASSERT_ARGS_Parrot_clone_code __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
+#define ASSERT_ARGS_Parrot_get_num_threads __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
+#define ASSERT_ARGS_Parrot_set_num_threads __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
+#define ASSERT_ARGS_Parrot_thread_create __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_Parrot_shared_gc_unblock __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_pt_thread_create __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_pt_add_to_interpreters __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_pt_clone_code __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
-#define ASSERT_ARGS_pt_clone_globals __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
-#define ASSERT_ARGS_pt_free_pool __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_pt_gc_mark_root_finished __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_pt_gc_start_mark __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_pt_gc_stop_mark __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_pt_join_threads __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_pt_shared_fixup __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+#define ASSERT_ARGS_Parrot_thread_create_local_sub \
+     __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(thread) \
     , PARROT_ASSERT_ARG(pmc))
-#define ASSERT_ARGS_pt_suspend_self_for_gc __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+#define ASSERT_ARGS_Parrot_thread_create_local_task \
+     __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(thread_interp) \
+    , PARROT_ASSERT_ARG(task))
+#define ASSERT_ARGS_Parrot_thread_create_proxy __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(thread) \
+    , PARROT_ASSERT_ARG(pmc))
+#define ASSERT_ARGS_Parrot_thread_get_free_threads_array_index \
+     __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
+#define ASSERT_ARGS_Parrot_thread_get_threads_array \
+     __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
+#define ASSERT_ARGS_Parrot_thread_init_threads_array \
+     __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_pt_thread_create_run __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+#define ASSERT_ARGS_Parrot_thread_insert_thread __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(thread))
+#define ASSERT_ARGS_Parrot_thread_make_local_copy __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(sub))
-#define ASSERT_ARGS_pt_thread_detach __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
-#define ASSERT_ARGS_pt_thread_join __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(parent))
-#define ASSERT_ARGS_pt_thread_kill __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
-#define ASSERT_ARGS_pt_thread_prepare_for_run __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
-#define ASSERT_ARGS_pt_thread_run __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+    , PARROT_ASSERT_ARG(from) \
+    , PARROT_ASSERT_ARG(arg))
+#define ASSERT_ARGS_Parrot_thread_notify_thread __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp))
+#define ASSERT_ARGS_Parrot_thread_notify_threads __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
+#define ASSERT_ARGS_Parrot_thread_run __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(thread_interp_pmc) \
-    , PARROT_ASSERT_ARG(sub))
-#define ASSERT_ARGS_pt_thread_wait_with __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+    , PARROT_ASSERT_ARG(thread_interp_pmc))
+#define ASSERT_ARGS_Parrot_thread_schedule_task __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(mutex))
-#define ASSERT_ARGS_pt_thread_yield __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
-#define ASSERT_ARGS_pt_transfer_sub __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(d) \
-    , PARROT_ASSERT_ARG(s) \
+    , PARROT_ASSERT_ARG(thread_interp) \
+    , PARROT_ASSERT_ARG(task))
+#define ASSERT_ARGS_Parrot_thread_transfer_sub __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(destination) \
+    , PARROT_ASSERT_ARG(source) \
     , PARROT_ASSERT_ARG(sub))
+#define ASSERT_ARGS_Parrot_thread_wait_for_notification \
+     __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp))
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 /* HEADERIZER END: src/thread.c */
+
+#define Parrot_thread_maybe_create_proxy(i, thread, pmc) ( \
+        (pmc)->vtable->base_type == enum_class_Proxy \
+        ? (PARROT_PROXY(pmc)->interp == (thread) ? PARROT_PROXY(pmc)->target : (pmc)) \
+        : Parrot_thread_create_proxy((i), (thread), (pmc)))
 
 #endif /* PARROT_THREAD_H_GUARD */
 

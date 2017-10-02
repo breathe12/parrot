@@ -1,24 +1,45 @@
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 # Setup of some commands
+#IF(win32):SHELL   = CMD
 PERL    = @perl@
 CHMOD   = @chmod@
 MKPATH  = @mkpath@
 TOUCH   = @touch@
 RM_F    = @rm_f@
 RM_RF   = @rm_rf@
-PERLDOC_BIN = @perldoc@
+PERLDOC = @perldoc@
+POD2MAN = @pod2man@
 VERSION = @VERSION@@DEVEL@
+PODEXTRACT   = $(PERL) ../tools/build/podextract.pl
+ADDGENERATED = $(PERL) ../tools/build/addgenerated.pl
+OPS_SUMMARY = ../tools/docs/ops_summary.pl
 
 # long list of .pod files
 POD = @TEMP_pod@
+
+MAN_1 = binaries/parrot.1 \
+	binaries/parrotbug.1 \
+	binaries/parrot_config.1 \
+	binaries/parrot_nci_thunk_gen.1 \
+	binaries/parrot-nqp.1 \
+	binaries/parrot-ops2c.1 \
+	binaries/parrot-prove.1 \
+	binaries/pbc_disassemble.1 \
+	binaries/pbc_dump.1 \
+	binaries/pbc_merge.1 \
+	binaries/pbc_to_exe.1 \
+	binaries/plumage.1 \
+	binaries/winxed.1
+
+.SUFFIXES : .pod .1
 
 #
 # Targets
 #
 
 # The default target
-all: packfile-c.pod $(POD)
+all: doc-prep packfile-c.pod $(POD) ops/index.pod man
 
 # This is a listing of all targets, that are meant to be called by users
 # Most of them are proxied in the root makefile parrot/Makefile
@@ -26,11 +47,17 @@ help :
 	@echo ""
 	@echo "Following targets are available to the user:"
 	@echo ""
-	@echo "  all:               Generate documentation from .pod files or from the sources."
-	@echo "                     This is the default target."
-	@echo "  clean:             Remove the generated documentation."
-	@echo "  html:              Generate HTML documentation."
-	@echo "  html-clean:        Remove the generated HTML documentation."
+	@echo "all:             Generate documentation from .pod files or from the sources."
+	@echo "                 This is the default target."
+	@echo ""
+	@echo "man:             Generate man files (not on windows)"
+	@echo "htmlhelp:        generate a .chm file (windows only)."
+	@echo "htmlhelp-clean:  Remove generated .chm"
+	@echo ""
+	@echo "pdf:             Generate a PDF from the html docs"
+	@echo "pdf-clean:       Remove generated pdf"
+	@echo ""
+	@echo "clean:           Remove the generated documentation."
 	@echo ""
 
 $(POD): doc-prep
@@ -40,16 +67,47 @@ doc-prep:
 	$(TOUCH) doc-prep
 
 packfile-c.pod: ../src/packfile/api.c
-#IF(new_perldoc):	$(PERLDOC_BIN) -ud packfile-c.pod ../src/packfile/api.c
-#ELSE:	$(PERLDOC_BIN) -u ../src/packfile/api.c > packfile-c.pod
+	$(PODEXTRACT) ../src/packfile/api.c packfile-c.pod
+	$(ADDGENERATED) "docs/$@" "[doc]"
 
-clean:
+.pod.1 : # suffix rule (limited support)
+	$(POD2MAN) $< > $@
+	$(ADDGENERATED) "docs/$@" "[main]" man
+
+ops/index.pod : $(POD) $(OPS_SUMMARY)
+	$(PERL) $(OPS_SUMMARY) > ops/index.pod
+	$(ADDGENERATED) "docs/$@" "[doc]"
+
+binaries/pbc_disassemble.1 : ../frontend/pbc_disassemble/main.c
+	$(POD2MAN) ../frontend/pbc_disassemble/main.c > $@
+	$(ADDGENERATED) "docs/$@" "[main]" man
+binaries/pbc_dump.1 : ../frontend/pbc_dump/main.c
+	$(POD2MAN) ../frontend/pbc_dump/main.c > $@
+	$(ADDGENERATED) "docs/$@" "[main]" man
+binaries/pbc_merge.1 : ../frontend/pbc_merge/main.c
+	$(POD2MAN) ../frontend/pbc_merge/main.c > $@
+	$(ADDGENERATED) "docs/$@" "[main]" man
+
+#IF(has_pod2man):man: man.good
+#ELSE:man: man.stub
+
+man.good: $(MAN_1)
+
+man.stub:
+	@echo "pod2man is required, but not detected."
+
+man-clean:
+	$(RM_F) $(MAN_1)
+
+clean: man-clean html-clean pdf-clean htmlhelp-clean
 	$(RM_F) packfile-c.pod $(POD) doc-prep
+	$(RM_RF) ops
 
-html: all
-	$(PERL) -I../lib ../tools/docs/write_docs.pl --silent --version=$(VERSION)
+html:
+	$(PERL) -I../lib ../tools/docs/mk_html_docs.pl --version=$(VERSION)
+html-clean:
+	$(RM_RF) html
 
-# The pdf target is to generate a parrot PDF document.
 # If you are missing the command 'pdflatex' then you have first to install a
 # LaTeX distribution with it. For Windows and UNIX downloads are for example
 # available from: http://miktex.org, http://tug.org/texlive or
@@ -58,6 +116,7 @@ pdf: ../tools/docs/filename_and_chapter.pl
 	$(MKPATH) build/modified_pod
 	$(PERL) ../tools/docs/filename_and_chapter.pl
 	cd build && pdflatex parrot-book.tex && pdflatex parrot-book.tex
+	$(ADDGENERATED) "docs/build/parrot-book.pdf" "[main]" doc
 
 #pdf-release: build/parrot-book.pdf
 #	cp build/parrot-book.pdf build/parrot-book-$$(date +"%Y.%m").pdf
@@ -65,12 +124,10 @@ pdf: ../tools/docs/filename_and_chapter.pl
 pdf-clean:
 	$(RM_RF) build
 
-html-clean:
-	$(RM_RF) html
-
 htmlhelp: html
 #IF(win32):	cd .. && $(PERL) tools/docs/mk_chm.pl
 #IF(win32):	-cd html && hhc parrot.hhp
+#IF(win32):	$(ADDGENERATED) "docs/html/parrot.chm" "[main]" doc
 
 htmlhelp-clean:
 #IF(win32):	$(RM_F) "html/*.hhc" "html/*.hhk" "html/*.hhp" "html/*.chm"

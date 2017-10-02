@@ -61,13 +61,13 @@ void Parrot_ComposeRole(PARROT_INTERP,
 
 PARROT_EXPORT
 PARROT_WARN_UNUSED_RESULT
-PARROT_CAN_RETURN_NULL
+PARROT_CANNOT_RETURN_NULL
 PMC* Parrot_ComputeMRO_C3(PARROT_INTERP, ARGIN(PMC *_class))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
 PARROT_EXPORT
-PARROT_CAN_RETURN_NULL
+PARROT_CANNOT_RETURN_NULL
 PARROT_WARN_UNUSED_RESULT
 PMC * Parrot_find_method_direct(PARROT_INTERP,
     ARGIN(PMC *_class),
@@ -94,7 +94,7 @@ INTVAL Parrot_get_vtable_index(PARROT_INTERP, ARGIN(const STRING *name))
 PARROT_EXPORT
 PARROT_PURE_FUNCTION
 PARROT_CAN_RETURN_NULL
-const char * Parrot_get_vtable_name(SHIM_INTERP, INTVAL idx);
+const char * Parrot_get_vtable_name(PARROT_INTERP, INTVAL idx);
 
 PARROT_EXPORT
 void Parrot_invalidate_method_cache(PARROT_INTERP,
@@ -102,7 +102,7 @@ void Parrot_invalidate_method_cache(PARROT_INTERP,
         __attribute__nonnull__(1);
 
 PARROT_EXPORT
-PARROT_CAN_RETURN_NULL
+PARROT_CANNOT_RETURN_NULL
 PARROT_WARN_UNUSED_RESULT
 PMC * Parrot_oo_find_vtable_override(PARROT_INTERP,
     ARGIN(PMC *classobj),
@@ -122,17 +122,23 @@ PMC * Parrot_oo_find_vtable_override_for_class(PARROT_INTERP,
         __attribute__nonnull__(3);
 
 PARROT_EXPORT
-PARROT_CAN_RETURN_NULL
+PARROT_CANNOT_RETURN_NULL
 PARROT_WARN_UNUSED_RESULT
 PMC * Parrot_oo_get_class(PARROT_INTERP, ARGIN(PMC *key))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
 PARROT_EXPORT
-PARROT_CAN_RETURN_NULL
+PARROT_CANNOT_RETURN_NULL
 PARROT_WARN_UNUSED_RESULT
 PMC * Parrot_oo_get_class_str(PARROT_INTERP, ARGIN_NULLOK(STRING *name))
         __attribute__nonnull__(1);
+
+PARROT_EXPORT
+PARROT_CANNOT_RETURN_NULL
+PMC * Parrot_oo_new_class_pmc(PARROT_INTERP, ARGIN(PMC *classtype))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2);
 
 void destroy_object_cache(PARROT_INTERP)
         __attribute__nonnull__(1);
@@ -158,7 +164,7 @@ void Parrot_oo_extract_methods_from_namespace(PARROT_INTERP,
         __attribute__nonnull__(2)
         __attribute__nonnull__(3);
 
-PARROT_CAN_RETURN_NULL
+PARROT_CANNOT_RETURN_NULL
 PARROT_WARN_UNUSED_RESULT
 PMC * Parrot_oo_newclass_from_str(PARROT_INTERP, ARGIN(STRING *name))
         __attribute__nonnull__(1)
@@ -212,6 +218,9 @@ INTVAL Parrot_oo_register_type(PARROT_INTERP,
     , PARROT_ASSERT_ARG(key))
 #define ASSERT_ARGS_Parrot_oo_get_class_str __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
+#define ASSERT_ARGS_Parrot_oo_new_class_pmc __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(classtype))
 #define ASSERT_ARGS_destroy_object_cache __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
 #define ASSERT_ARGS_init_object_cache __attribute__unused__ int _ASSERT_ARGS_CHECK = (\

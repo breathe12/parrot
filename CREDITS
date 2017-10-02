@@ -1,6 +1,3 @@
-=pod
-
-
     Following in the steps of other open source projects that
     eventually take over the world, here is the partial list
     of people who have contributed to Parrot and its supporting
@@ -8,7 +5,7 @@
     grepping and beautification by scripts.
     The fields are: name (N), email (E), web-address (W),
     description (D), main username (U), alias usernames (A)
-    and snail-mail address (S).
+    and geographic location (S).
 
         Thanks,
 
@@ -18,6 +15,13 @@
         PPPS: To turn this file into a author map for git-svn, see tools/dev/mk_author_map.pl
 
 ----------
+N: Aaron Faanes
+E: dafrito@gmail.com
+W: http://www.dafrito.com
+D: make_html_docs revisions
+U: dafrito
+S: Richardson, TX
+
 N: Aaron Sherman
 U: ajs
 E: ajs@ajs.com
@@ -31,6 +35,14 @@ D: Building on various platforms.
 
 N: Ahmed Zawawi
 D: Rakudo builtins
+
+N: Akash Manohar
+U: akashmanohar
+A: SingAlong
+E: akash@akash.im
+D: Fixed PCT tutorial Episode-3
+S: Bangalore, India
+W: http://akash.im
 
 N: Alberto Manuel Brandao Simoes
 U: ambs
@@ -57,9 +69,16 @@ U: heimdall
 E: Nattfodd@gmail.com
 
 N: Allison Randal
-D: Architect (0.4.6...) & Lead Developer
+D: Architect (0.4.6 - 2.8.0) & Lead Developer
 E: allison@parrot.org
 U: allison
+
+N: Alvis Yardley
+D: Documentation Shepherd (3.9.0 - Present)
+D: Release manager for 4.1.0, 4.5.0 and 4.8.0
+E: ac.yardley@gmail.com
+U: alvis
+S: Ft. Worth, Texas
 
 N: Amir Karger
 U: amirkarger
@@ -90,9 +109,10 @@ D: typo squisher
 E: yDNA@cpan.org
 
 N: Andrew Whitworth
+D: Product Manager (2.9 - 4.9)
 D: Internals development
 D: Documentation
-D: Release manager for 0.8.2, 1.3.0, 1.5.0 and 2.4.0
+D: Release manager for 0.8.2, 1.3.0, 1.5.0, 2.4.0, 2.11.0, 3.3.0, 3.10.0, 4.0.0, 4.4.0 and 4.7.0
 E: wknight8111@gmail.com
 U: Whiteknight
 
@@ -141,6 +161,10 @@ A: austin_h...@yahoo.com
 E: austin_hastings@yahoo.com
 D: Close
 D: Kakapo
+
+N: Bart Wiegmans
+E: bartwiegmans@gmail.com
+D: mod_parrot
 
 N: Benjamin Goldberg
 D: Numerous improvements and proposals.
@@ -192,6 +216,11 @@ D: Early contributions under the name Brent Dax.
 E: brent@brentdax.com
 W: http://www.brentdax.com/
 
+N: Brian Gernhardt
+E: brian.gernhardt@mail.rit.edu
+D: GSoC Student, PCT
+U: benabik
+
 U: bdwheele
 N: Brian Wheeler
 E: bdwheele@indiana.edu
@@ -206,7 +235,10 @@ U: util
 E: bruce.gray@acm.org
 D: Improvements to Config, Build, and Test sub-systems.
 D: Cage cleaning, codingstd, warnings, and doc corrections.
-D: Win32 platform fixes.
+D: Darwin and Win32 platform fixes.
+D: Release manager (5.1.0 - 5.7.0, 5.10.0, 6.{0,2,4,6,8,10}.0, 7.{0,2,4,6,8,10}.0)
+D: GSoC 2013 Org Admin
+D: GSoC 2014 Mentor (Backup)
 S: Auburn, AL, USA
 
 N: Bryan C. Warnock
@@ -224,8 +256,8 @@ U: creiss
 E: creiss@cc.gatech.edu
 
 N: Chip Salzenberg
-D: Release manager emeritus (0.4.6-0.4.7)
-D: Architect emeritus (0.1.2-0.4.5)
+D: Release manager emeritus (0.4.6 - 0.4.7)
+D: Architect emeritus (0.1.2 - 0.4.5)
 U: chip
 E: chip@pobox.com
 
@@ -243,20 +275,21 @@ D: Rakudo patches
 
 N: Christoph Otto
 U: cotto
-D: Patch for key flags in pdd08
+D: Architect (2.9 - 5.0)
 D: Range check in Env PMC
 A: christoph_googleacct@mksig.org
 A: christop...@mksig.org
 A: Christoph Otto
-D: Pipp, Lorito taskmaster
 E: christoph@mksig.org
 
 N: chromatic
 U: chromatic
-D: SDL library and examples; PIR Test::*; test suite cleanup; Parrot::Embed
-D: freaky bugs; cool features; Pheme
-E: chromatic@wgz.org
-W: http://wgz.org/chromatic/
+
+N: Chirag Agrawal
+U: ZYROz
+D: GSOC2014 method call optimizations
+E: a.chirag14@yahoo.com
+S: Goa, India
 
 N: Clayton O'Neill
 D: Fix for parrot linking issue on Solaris 8
@@ -299,9 +332,13 @@ N: Damian Miles Knopp
 U: dmknopp
 E: dmknopp@loyola.edu
 
+N: Daniel Kang
+U: jumpyshoes
+D: improve pbc_disassemble's test coverage
+
 N: Dan Sugalski
 U: dan
-D: Architect emeritus (0.0.1-0.1.1)
+D: Architect emeritus (0.0.1 - 0.1.1)
 E: dan@sidhe.org
 W: http://www.sidhe.org/~dan/blog/
 
@@ -322,6 +359,11 @@ E: arbelo@gmail.com
 N: Dave Woldrich
 D: Win32 build fixes
 E: dave@woldrich.com
+
+N: David Czech
+U: kapace
+E: davidczech510@gmail.com
+D: increasing EventHandler test coverage
 
 N: David M. Lloyd
 U: dmlloyd
@@ -362,6 +404,12 @@ N: Eric Lubow
 D: makefile fixes
 E: eric@lubow.org
 W: http://eric.lubow.org/
+
+N: Felipe Pena
+D: Bug fixes
+E: felipensp@gmail.com
+U: Felipe
+S: Rio de Janeiro, Brazil
 
 N: Felix Gallo
 D: delegate.pmc patch
@@ -416,8 +464,15 @@ D: Perl2Pir tests conversion
 D: Miscellaneous codingstd fixes
 
 N: Gerd Pokorra
+A: gerd
 E: pokorra@uni-siegen.de
-D: Release manager for 1.9.0, 2.3.0, 2.5.0, 2.8.0 and 2.9.0
+D: Release manager for 1.9.0, 2.3.0, 2.5.0, 2.8.0, 2.9.0, 3.2.0 and 3.4.0
+
+N: Gerhard R.
+U: gerdr
+A: not_gerd
+W: http://gerdr.github.com/on-parrot/
+D: MSYS fixes
 
 N: Goplat
 D: Win98 and other fixes.
@@ -468,7 +523,8 @@ D: various Pynie patches
 N: James E Keenan
 E: jkeenan@cpan.org
 U: jkeenan
-D: Testing of configuration and build tools
+A: kid51
+D: Testing of configuration and build tools; release manager
 W: http://thenceforward.net/parrot/
 S: Brooklyn, NY, USA
 
@@ -479,6 +535,10 @@ D: packfile and Tru64 fixes
 D: lot of general hints and patches to improve portability
 
 N: Jason Gloudon
+
+N: Jay Emerson
+E: john.emerson@yale.edu
+U: jay
 
 N: Jeff Clites
 D: PPC JIT patches, ICU support, string handling
@@ -530,7 +590,7 @@ E: zhuomingliang@yahoo.com.cn
 D: Bugfixes, cage cleaning
 
 N: John Harrison
-E: ash@greatethaninfinity.com 
+E: ash@greatethaninfinity.com
 U: ash_
 
 N: John J. Trammell
@@ -540,10 +600,16 @@ D: coding standard tests
 N: John Paul Wallington
 D: pir-mode.el: fix for xemacs plus bugfixes and cleanups
 
+N: Jonathan Gentle
+E: atrodo@atrodo.org
+U: atrodo
+A: atrodo
+S: Ohio, USA
+
 N: Jonathan "Duke" Leto
 E: jonathan@leto.net
-W: http://leto.net
-D: Release manager for 1.7.0
+W: http://dukeleto.pl
+D: Release manager for 1.7.0, 3.9.0, 4.2.0, 5.9.0 GCI/GSoC Org Admin/Mentor
 U: dukeleto
 A: leto
 A: Duke Leto
@@ -620,6 +686,12 @@ D: yield and other PIR improvements
 
 N: Kevin Falcone
 
+N: Kevin Polulak
+U: soh_cah_toa
+E: kpolulak@gmail.com
+D: HBDB debugger, release manager for 3.8.0
+S: New Jersey, USA
+
 N: Kevin Tew
 U: tewk
 E: tewk@tewk.com
@@ -632,8 +704,13 @@ D: clean-ups of compilers/imcc and its documentation.
 D: compilers/pirc and languages/PIR.
 D: various updates to PCT-based languages (C99,Punie,Cardinal,Ecmascript)
 D: languages/json, languages/squaak
-U: kj, kjs
+U: kjs
 E: parrotcode@gmail.com
+
+N: Klāvs Priedītis
+U: klavs
+E: klavs.pr@gmail.com
+D: M0 bytecode disassembler
 
 N: Larry Wall
 E: larry@wall.org
@@ -674,6 +751,10 @@ U: LylePerl
 D: Win32 and CGI testing
 W: http://perl.bristolbath.org/blog/lyle/
 
+N: Mariano Wahlmann
+E: dichoso@gmail.com
+A: bluescreen
+
 N: Marcelo Serra Castilhos
 E: mhelix@terra.com.br
 D: Bug fix
@@ -698,6 +779,15 @@ N: Markus Mayr
 D: Implementation of the Rational PMC
 D: Fixing SDL-bindings and examples
 
+N: Martin Olsen
+D: M0 tests
+U: mro
+E: github.com@martinolsen.net
+
+N: Matt Boyle
+U: ligne
+D: Fixes to docs and test-suite.
+
 N: Matt Diephouse
 U: mdiep
 E: matt@diephouse.com
@@ -712,7 +802,9 @@ N: Matt Kennedy
 D: Some Env PMC method implementations and tests
 
 N: Matt Rajca
-D: Code refactoring
+E: mattmatt.rajca@me.com
+A: mattrajca
+D: Code refactoring, increasing test coverage
 
 N: Mattia Barbon
 D: Win32 fixes, dynamic PMC creation and loading
@@ -721,8 +813,7 @@ N: Melvin Smith
 U: mrjoltcola
 D: Parrot core, various ops, IO, subs, continuations, COW stacks
 D: IMCC, Cola
-E: melvin.smith@mindspring.com
-E: melvins@us.ibm.com
+E: melvin.smith@gyrasoft.com
 S: Atlanta, GA
 
 N: Michael Cartmell
@@ -735,7 +826,13 @@ D: testing parrot and some HLL's
 D: fixing codetest failures
 D: adding function documentation
 D: tracwiki additions
+D: Release manager for 2.7.0, 3.1.0
 E: mike.hind@gmail.com
+
+N: Michael Schroeder
+U: mls
+D: subprof profiling runcore
+E: mls@suse.de
 
 N: Michael G. Schwern
 
@@ -767,6 +864,12 @@ N: Moritz Lenz
 E: moritz@faui2k3.org
 U: moritz
 D: Test infrastructure for languages/perl6/ and Perl 6 in general
+
+N: Marek Šuppa
+E: marek@suppa.sk
+U: mrshu
+W: http://shu.io
+D: Benchmarks
 
 N: Nat Tuck
 U: Chandon
@@ -817,6 +920,11 @@ E: mestre.smash@gmail.com
 
 N: OOLLEY kj
 D: Miscellaneous cleanup and PDD07-conformance
+
+N: Oliver Charles
+D: Initial patch to add 'getprotobyname' to Socket PMC
+U: ocharles
+E: oliver@ocharles.org.uk
 
 N: Ovid
 D: Rename 'pbc_to_c' to 'pbc_to_exe'
@@ -870,10 +978,16 @@ D: The Second Perl 6 Summarizer after Bryan C. Warnock
 E: pdcawley@bofh.org.uk
 W: http://www.bofh.org.uk:8080/
 
+N: Piotr Fusik
+D: Fixed typos
+
 N: Reini Urban
 U: rurban
 E: rurban@cpan.org
-D: cygwin, 64-bit pbc compat, float converters, bignum.pmc
+E: rurban@cpanel.net
+D: Internals development
+D: Release manager and GSOC mentor
+S: Dresden, D (formerly Graz, A and Houston, TX)
 
 N: Richard Hainsworth
 U: finanalyst
@@ -972,6 +1086,13 @@ E: stefanor@cox.net
 D: Perl 5 interoperability, Blizkost
 U: sorear
 
+N: Stefan Seifert
+U: nine
+E: nine@detonation.org
+D: Hybrid threads, continuation of Chandler's work on tasks
+S: Linz, Austria
+W: http://niner.name
+
 N: Stéphane Payrard
 D: Various code fixes and improvements
 
@@ -1047,6 +1168,11 @@ D: Nicer command line handling in ops2c.pl
 N: Tony Payne
 D: Example hanoi.pasm
 
+N: Tony Young
+E: rofflwaffls@gmail.com
+U: rfw
+D: increasing PMC test coverage
+
 N: Tyler Curtis
 U: tcurtis
 E: tyler.l.curtis@gmail.com
@@ -1096,6 +1222,10 @@ N: Zach Morgan
 E: zpmorgan@gmail.com
 D: Rakudo patch
 
+N: Anthony Parsons
+E: flussence@gmail.com
+U: flussence
+
 N: cvsdummy
 U: cvsdummy
 E: cvs@perl.org
@@ -1103,5 +1233,3 @@ E: cvs@perl.org
 N: svn
 U: svn
 E: svn@perl.org
-
-=cut

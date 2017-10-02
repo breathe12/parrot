@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2001-2008, Parrot Foundation.
+# Copyright (C) 2001-2015, Parrot Foundation.
 
 =head1 NAME
 
@@ -17,13 +17,30 @@ Tests the ManagedStruct PMC. Checks element access and memory allocation.
 
 .sub main :main
     .include 'test_more.pir'
-    plan(24)
+
+    .include 'iglobals.pasm'
+    .local pmc interp, config
+    interp = getinterp
+    config = interp[.IGLOBALS_CONFIG_HASH]
+    $S0 = config['ccflags']
+    set $S1, "-DSTRUCT_DEBUG"
+    $I1 = index $S0, $S1
+    if $I1 == -1 goto go_ahead
+
+    skip_all('does not work with --ccflags=-DSTRUCT_DEBUG')
+    finish()
+    exit 0
+go_ahead:
+    plan(26)
 
     set_managedstruct_size()
     element_access()
     named_element_access_int16()
     nested_struct_offsets()
     interface_check()
+    destroy_custom()
+    #clone_custom()
+    realloc_free()
 .end
 
 .sub set_managedstruct_size
@@ -89,7 +106,7 @@ Tests the ManagedStruct PMC. Checks element access and memory allocation.
     is($I0, 1, "char val of 1 is correct")
     set $I0, $P0[0;1]
     is($I0, 2, "char val of 258 retrieved as 2")
-    # now acces that as a short
+    # now access that as a short
     new $P2, ['ResizablePMCArray']
     push $P2, .DATATYPE_SHORT
     push $P2, 1
@@ -109,7 +126,7 @@ Tests the ManagedStruct PMC. Checks element access and memory allocation.
     push $P1, 0
     push $P1, 0
 
-    set $P1['y'], .DATATYPE_INT16
+    set $P1['y'], .DATATYPE_INTVAL
     push $P1, 0
     push $P1, 0
 
@@ -137,6 +154,17 @@ Tests the ManagedStruct PMC. Checks element access and memory allocation.
 
     is($I2, 2, "'x' value by name is correct")
     is($I3, 16, "'y' value by name is correct")
+
+    # try getting a string
+    push_eh eh
+    set $S0, $P2["x"]
+    ok(0, "able to get a DATATYPE_INT16 as string")
+    goto finally
+eh:
+    .get_results($P3)
+    is($P3, "returning unhandled string type in struct", "raised correct exception when trying to get DATATYPE_INT16 as string")
+finally:
+    pop_eh
 .end
 
 #pasm_output_is( <<'CODE', <<'OUTPUT', "nested struct offsets" );
@@ -197,6 +225,36 @@ Tests the ManagedStruct PMC. Checks element access and memory allocation.
     is(bool1, 1, "ManagedStruct does scalar")
     does bool1, pmc1, "no_interface"
     is(bool1, 0, "ManagedStruct doesn't do no_interface")
+.end
+
+.sub destroy_custom
+    .local pmc pmc1
+    pmc1 = new ['ManagedStruct']
+
+
+    $P0 = get_global 'test_handler'
+    # I'm not sure how to set custom_destroy func?
+    #setattribute pmc1, "custom_free_func", $P0
+
+    null pmc1
+    sweep 1
+.end
+
+.sub custom_destroyer
+    say "ManagedStruct being custom destroyed here"
+    #ok()
+.end
+
+.sub realloc_free
+    .local pmc pmc1
+    pmc1 = new ['ManagedStruct']
+
+    # Allocate memory for the ms
+    pmc1 = 1337
+    # And free is by setting it to zero.
+    pmc1 = 0
+
+    ok(1, "Allocate and free")
 .end
 
 # Local Variables:

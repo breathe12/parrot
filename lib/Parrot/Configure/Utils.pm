@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2008, Parrot Foundation.
+# Copyright (C) 2001-2012, Parrot Foundation.
 
 =head1 NAME
 
@@ -13,6 +13,8 @@ The subroutines found in this module do B<not> require the Parrot::Configure
 object as an argument.  Those subroutines formerly found in this module which
 B<do> require the Parrot::Configure object as an argument have been moved into
 Parrot::Configure::Compiler.
+
+Beware that Parrot::Config is not available at configure time.
 
 =head2 Functions
 
@@ -32,19 +34,20 @@ use File::Copy ();
 use File::Spec;
 use File::Which;
 use lib ("lib");
-use Parrot::BuildUtil ();
+use Parrot::BuildUtil qw(add_to_generated);
 our @EXPORT    = ();
 our @EXPORT_OK = qw(
     prompt copy_if_diff move_if_diff integrate
-    capture_output check_progs _slurp
+    capture capture_output check_progs _slurp
     _run_command _build_compile_command
+    print_to_cache read_from_cache
+    add_to_generated
 );
 our %EXPORT_TAGS = (
-    inter => [qw(prompt integrate)],
-    auto  => [
-        qw(capture_output check_progs)
-    ],
-    gen => [qw( copy_if_diff move_if_diff )]
+    inter => [qw( prompt integrate )],
+    auto  => [qw( capture_output check_progs )],
+    gen   => [qw( copy_if_diff move_if_diff add_to_generated )],
+    cache => [qw( print_to_cache read_from_cache ) ],
 );
 
 =item C<_run_command($command, $out, $err)>
@@ -117,7 +120,24 @@ sub _build_compile_command {
     my ( $cc, $ccflags, $cc_args ) = @_;
     $_ ||= '' for ( $cc, $ccflags, $cc_args );
 
-    return "$cc $ccflags $cc_args -I./include -c test_$$.c";
+    if ($^O eq 'VMS') {
+      # Gather all -D and -I into two lists, and feed them
+      # into /Define and /Include qualifiers
+      my ( @defs, @incs );
+      $ccflags .= " $cc_args"; $cc_args = '';
+      push @defs, $1 while $ccflags =~ /-D(\S+)/g;
+      $ccflags =~ s/-D\S+//g;
+      push @incs, $1 while $ccflags =~ /-I(\S+)/g;
+      $ccflags =~ s/-I\S+//g;
+      $cc_args .= '/Define=("'.join('","', map {s/"/""/g; $_} @defs).'")'
+        if @defs;
+      $cc_args .= '/Include=("'.join('","',map {s/"/""/g; $_} @incs).'")'
+        if @incs;
+    }
+    else {
+        $cc_args .= " -I./include -c";
+    }
+    return "$cc $ccflags $cc_args test_$$.c";
 }
 
 =item C<integrate($orig, $new)>
@@ -227,6 +247,55 @@ sub move_if_diff {    ## no critic Subroutines::RequireFinalReturn
     unlink $from;
 }
 
+=item C<capture($coderef)>
+
+Evals the given function without argument. The function return value,
+the captured stdout and stderr value, and its return status is returned as
+a 4-tuple.
+B<STDOUT> is redirected to F<test_$$.out> during the execution, and deleted
+after the command's run.
+B<STDERR> is redirected to F<test_$$.err> during the execution, and deleted
+after the command's run.
+C<chdir> inside the coderef is forbidden.
+
+=cut
+
+sub capture {
+    my $coderef = shift;
+
+    # disable STDOUT/STDERR
+    open my $OLDOUT, '>&', \*STDOUT;
+    open STDOUT, '>', "test_$$.out";
+    open my $OLDERR, '>&', \*STDERR;
+    open STDERR, '>', "test_$$.err";
+
+    my $output = eval { &$coderef; };
+    my $retval = $@;
+    $@ = '';
+
+    # reenable STDOUT/STDERR
+    close STDOUT;
+    open STDOUT, '>&', $OLDOUT;
+    close STDERR;
+    open STDERR, '>&', $OLDERR;
+
+    # slurp stderr
+    my ($out, $out_err) = ('', '');
+    if (-f "./test_$$.out") {
+        $out = _slurp("test_$$.out");
+        unlink "test_$$.out";
+    }
+    if (-f "./test_$$.err") {
+        $out_err = _slurp("test_$$.err");
+        unlink "test_$$.err";
+    }
+
+    return ( $output, $out, $out_err, $retval ) if wantarray;
+    ${$_[0]} = $out     if ref $_[0];
+    ${$_[1]} = $out_err if ref $_[1];
+    return $output;
+}
+
 =item C<capture_output($command)>
 
 Executes the given command. The command's output (both stdout and stderr), and
@@ -236,7 +305,7 @@ F<test.err> during the execution, and deleted after the command's run.
 =cut
 
 sub capture_output {
-    my $command = join ' ', @_;
+    my $command = join(' ', @_);
 
     # disable STDERR
     open my $OLDERR, '>&', \*STDERR;
@@ -250,7 +319,7 @@ sub capture_output {
     open STDERR, '>&', $OLDERR;
 
     # slurp stderr
-    my $out_err = _slurp("./test_$$.err");
+    my $out_err = _slurp("test_$$.err");
 
     # cleanup
     unlink "test_$$.err";
@@ -291,6 +360,41 @@ sub check_progs {
     }
 
     return;
+}
+
+=item C<print_to_cache( $cachefile, $value )>
+
+Opens a handle to write to the file specified in the first argument. Prints
+the value specified in the second argument, followed by a newline.  Typically,
+this will be a hidden file in the user's top-level parrot directory.
+Implicitly returns true value upon success; C<die>s otherwise.
+
+=cut
+
+sub print_to_cache {
+    my ($cache, $value) = @_;
+    open my $FH, ">", $cache
+        or die "Unable to open handle to $cache for writing: $!";
+    print {$FH} "$value\n";
+    close $FH or die "Unable to close handle to $cache after writing: $!";
+}
+
+=item C<read_from_cache( $cachefile )>
+
+Opens a handle to read from the file specified in the first argument. This is
+assumed to be a file consisting of a single string, optionally terminated with
+a newline.  The string is returned.
+
+=cut
+
+sub read_from_cache {
+    my ($cache) = @_;
+    my $value;
+    open my $FH, '<', $cache
+        or die "Unable to open $cache for reading: $!";
+    chomp($value = <$FH>);
+    close $FH or die "Unable to close $cache after reading: $!";
+    return $value;
 }
 
 =item C<_slurp($filename)>

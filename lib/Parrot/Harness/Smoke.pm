@@ -1,8 +1,8 @@
-# Copyright (C) 2006-2010, Parrot Foundation.
+# Copyright (C) 2006-2014, Parrot Foundation.
 
 =head1 NAME
 
-Parrot::Harness::Smoke - Subroutines used by harness-scripts to generate smoke reports
+Parrot::Harness::Smoke - Generate smoke reports
 
 =head1 DESCRIPTION
 
@@ -11,13 +11,13 @@ and by language implementation F<t/harness> to generate smoke reports.
 
 =head1 SUBROUTINES
 
-The module currently exports three subroutines on demand.
+The module currently exports three subroutines.
 
 =head2 C<collect_test_environment_data()>
 
     %env_data = collect_test_environment_data();
 
-Subroutine collects environmental data via:
+It collects environmental data via:
 
 =over 4
 
@@ -25,7 +25,7 @@ Subroutine collects environmental data via:
 
 =item * Environmental variables
 
-=item * Analysis of C<.svn> metadata
+=item * Analysis of C<git> metadata
 
 =item * Application of CPAN modules.  F<Mail::Util> and F<Sys::Hostname> are
 used, if available.
@@ -56,7 +56,7 @@ On network problem or for offline use you may send tar reports later
 with that command:
 
   perl -Ilib -MParrot::Harness::Smoke \
-    -e'Parrot::Harness::Smoke::send_archive_to_smolder(Parrot::Harness::Smoke::collect_test_environment_data())'
+    -e'send_archive_to_smolder(collect_test_environment_data())'
 
 =head2 C<generate_html_smoke_report()>
 
@@ -82,12 +82,13 @@ use warnings;
 
 use lib qw( . lib ../lib ../../lib );
 use Parrot::Config qw/%PConfig/;
-use base qw( Exporter );
-our @EXPORT_OK = qw(
-    generate_html_smoke_report
+use Parrot::Git qw/has_git/;
+use Parrot::Git::Describe;
+use Exporter 'import';
+our @EXPORT = qw(
     collect_test_environment_data
     send_archive_to_smolder
-);
+    generate_html_smoke_report);
 
 # language implementations have a different project id
 my %SMOLDER_CONFIG = (
@@ -95,7 +96,7 @@ my %SMOLDER_CONFIG = (
     username     => 'parrot-autobot',
     password     => 'qa_rocks',
     project_id   => 1,
-    report_file  => ['parrot_test_run.tar.gz'],
+    report_file  => ['t/archive/parrot_test_run.tar.gz'],
 );
 
 # language implementations must pass their respective project id
@@ -122,7 +123,8 @@ sub send_archive_to_smolder {
     # create our tags based off the test environment information
     my $tags = join(',',
         (map { $test_env_data{$_} } qw(Architecture Compiler Platform Version)),
-        'Perl ' . $test_env_data{'Perl Version'});
+                    'Perl ' . $test_env_data{'Perl_Version'});
+    $tags =~ s/ /_/g;
     my $response = $ua->post(
         $url,
         Content_Type => 'form-data',
@@ -131,7 +133,7 @@ sub send_archive_to_smolder {
             password     => $SMOLDER_CONFIG{password},
             tags         => $tags,
             report_file  => $report_file,
-            revision     => $PConfig{git_describe},
+            revision     => $Parrot::Git::Describe::current || '',
         ]
     );
 
@@ -158,18 +160,19 @@ sub collect_test_environment_data {
     my $arch = $PConfig{cpuarch} eq 'sun4' ? 'sparc' : $PConfig{cpuarch};
     # add the 32/64 bit suffix to the cpuarch
     if ($arch !~ /\d$/) {
-      $arch .= 8 * $PConfig{opcode_t_size};
+      $arch .= 8 * $PConfig{opcodesize};
     }
     my $devel = $PConfig{DEVEL};
+
     # check for local-modifications if -d .git and query to continue
-    if (-d ".git") {
+    if (-d ".git" && has_git()) {
         my $status = `git status`;
         @mods = grep /\S/, map { /^#\s+modified:\s+(.+)$/ and $1 } split(/\n/, $status);
         if (@mods) {
             $devel .= (" ".@mods." mods");
         }
         my $out = `git branch`;
-        ($branch) = $out =~ m{\* (\w+)$}m;
+        ($branch) = $out =~ m{\* ([-/\w]+)$}m;
     }
     my $me = $^O eq 'MSWin32' ? $ENV{'USERNAME'}
            : $ENV{'LOGNAME'} || eval { getpwuid($<) };
@@ -190,16 +193,16 @@ sub collect_test_environment_data {
         'Compiler'     => _get_compiler_version(),
         'DEVEL'        => $devel,
         'Optimize'     => ($PConfig{optimize} || 'none'),
-        'Perl Version' => (sprintf('%vd', $^V) . " $PConfig{archname}"),
+        'Perl_Version' => (sprintf('%vd', $^V) . " $PConfig{archname}"),
         'Platform'     => $PConfig{osname},
         'Version'      => $PConfig{VERSION},
         'Submitter'    => $ENV{"SMOLDER_SUBMITTER"} || "$me\@$domain"
     );
     push @data, ( 'Branch' => $branch ) if $branch;
-    push @data, ( 'Configure args' => $PConfig{configure_args} )
+    push @data, ( 'Configure_args' => $PConfig{configure_args} )
       if $PConfig{configure_args};
     push @data, ( 'Modifications' => join(" ", @mods) ) if @mods;
-    push @data, ( 'Git sha1' => $PConfig{sha1} )
+    push @data, ( 'Git_sha1' => $PConfig{sha1} )
       if $PConfig{sha1};
     return @data;
 }

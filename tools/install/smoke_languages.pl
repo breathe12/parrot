@@ -1,5 +1,5 @@
 #! perl
-# Copyright (C) 2007-2009, Parrot Foundation.
+# Copyright (C) 2007-2009,2014, Parrot Foundation.
 
 use strict;
 use warnings;
@@ -9,7 +9,7 @@ use Cwd;
 use Getopt::Long;
 use File::Spec::Functions;
 
-use Test::More tests => 33;
+use Test::More tests => 34;
 
 =head1 NAME
 
@@ -73,6 +73,7 @@ my $exe;
 my $out;
 my $FH;
 my $parrot = quote(catfile($pwd, $bindir, 'parrot'));
+my $winxed = quote(catfile($pwd, $bindir, 'winxed'));
 
 $out = `$parrot -V`;
 $out =~ m/version (\S+) built/;
@@ -175,9 +176,11 @@ SKIP:
 $exe = quote(catfile($pwd, $bindir, 'parrot-cardinal'));
 skip("Cardinal", 1) unless (-d "$pwd/$langdir/cardinal" || -e $exe);
 chdir("$pwd/$langdir/cardinal");
+system($winxed, "setup.winxed");
 $exe = "$parrot cardinal.pbc" unless (-e $exe);
 $out = `$exe -e "print 'hello world';"`;
 ok($out eq "hello world", "check cardinal");
+system($winxed, "setup.winxed", "test");
 }
 
 SKIP:
@@ -657,6 +660,16 @@ $exe = "$parrot unl.pbc" unless (-e $exe);
 $out = `$exe $filename`;
 ok($out eq "Hello world\n", "check unlambda");
 unlink($filename);
+}
+
+SKIP:
+{
+$exe = quote(catfile($pwd, $bindir, 'winxed'));
+skip("Winxed", 1) unless (-d "$pwd/$langdir/winxed" || -e $exe);
+chdir("$pwd/$langdir/winxed");
+$exe = "$parrot build/winxed_installed.pbc" unless (-e $exe);
+$out = `$exe -e "print('hello world');"`;
+ok($out eq "hello world", "check winxed");
 }
 
 SKIP:

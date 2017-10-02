@@ -1,16 +1,16 @@
 #! perl
-# Copyright (C) 2007, Parrot Foundation.
+# Copyright (C) 2007,2014, Parrot Foundation.
 # 005-run_one_step.t
 
 use strict;
 use warnings;
 
-use Test::More tests => 21;
+use Test::More tests => 20;
 use Carp;
 use lib qw( lib t/configure/testlib );
 use Parrot::Configure;
 use Parrot::Configure::Options qw( process_options );
-use IO::CaptureOutput qw | capture |;
+use Parrot::Configure::Utils qw | capture |;
 
 $| = 1;
 is( $|, 1, "output autoflush is set" );
@@ -62,8 +62,6 @@ ok( !ref( $confsteps[0]->object ),
     "'object' element of Parrot::Configure::Task struct is not yet a ref" );
 
 $conf->options->set(%args);
-is( $conf->options->{c}->{debugging},
-    1, "command-line option '--debugging' has been stored in object" );
 
 {
     my $rv ;

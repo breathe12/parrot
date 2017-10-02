@@ -1,13 +1,14 @@
 /*
-Copyright (C) 2001-2010, Parrot Foundation.
+Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
-src/pmc/default.pmc - Abstract root class
+src/pmc/default.pmc - default PMC
 
 =head1 DESCRIPTION
 
-These are the vtable functions for the default PMC class.
+These are the vtable functions for the default PMC class, the abstract
+root class.
 
 All methods which are not defined here get a default implementation
 generated from F<src/vtable.tbl> by F<tools/build/pmc2c.pl>.
@@ -41,67 +42,12 @@ static void cant_do_write_method(PARROT_INTERP,
     int index)
         __attribute__nonnull__(1);
 
-PARROT_WARN_UNUSED_RESULT
-PARROT_CAN_RETURN_NULL
-static PMC* check_get_std_props(PARROT_INTERP,
-    ARGIN(const PMC *self),
-    ARGIN(const STRING *key))
-        __attribute__nonnull__(1)
-        __attribute__nonnull__(2)
-        __attribute__nonnull__(3);
-
-PARROT_WARN_UNUSED_RESULT
-static INTVAL check_set_std_props(PARROT_INTERP,
-    ARGMOD(PMC *pmc),
-    ARGIN(const STRING *key),
-    ARGIN(PMC *value))
-        __attribute__nonnull__(1)
-        __attribute__nonnull__(2)
-        __attribute__nonnull__(3)
-        __attribute__nonnull__(4)
-        FUNC_MODIFIES(*pmc);
-
-static INTVAL has_pending_std_props(ARGIN(const PMC *self))
-        __attribute__nonnull__(1);
-
-PARROT_CANNOT_RETURN_NULL
-PARROT_WARN_UNUSED_RESULT
-static PMC* make_prop_hash(PARROT_INTERP, ARGMOD(PMC *self))
-        __attribute__nonnull__(1)
-        __attribute__nonnull__(2)
-        FUNC_MODIFIES(*self);
-
-static void propagate_std_props(PARROT_INTERP,
-    ARGIN(PMC *self),
-    ARGIN(PMC *prop_hash))
-        __attribute__nonnull__(1)
-        __attribute__nonnull__(2)
-        __attribute__nonnull__(3);
-
 #define ASSERT_ARGS_caller __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
 #define ASSERT_ARGS_cant_do_method __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
 #define ASSERT_ARGS_cant_do_write_method __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_check_get_std_props __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(self) \
-    , PARROT_ASSERT_ARG(key))
-#define ASSERT_ARGS_check_set_std_props __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(pmc) \
-    , PARROT_ASSERT_ARG(key) \
-    , PARROT_ASSERT_ARG(value))
-#define ASSERT_ARGS_has_pending_std_props __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(self))
-#define ASSERT_ARGS_make_prop_hash __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(self))
-#define ASSERT_ARGS_propagate_std_props __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(self) \
-    , PARROT_ASSERT_ARG(prop_hash))
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 /* HEADERIZER END: static */
 
@@ -174,152 +120,6 @@ cant_do_write_method(PARROT_INTERP, ARGIN_NULLOK(PMC *pmc), int index)
             caller(interp, pmc));
 }
 
-/*
-
-=item C<static INTVAL check_set_std_props(PARROT_INTERP, PMC *pmc, const STRING
-*key, PMC *value)>
-
-Called from C<setprop()>.
-
-Returns a true value if C<setprop()> can avoid actually setting a property
-in the prophash. If it returns true, the property setting will be reflected
-in a future call to C<propagate_std_props()>
-
-=cut
-
-*/
-
-PARROT_WARN_UNUSED_RESULT
-static INTVAL
-check_set_std_props(PARROT_INTERP, ARGMOD(PMC *pmc), ARGIN(const STRING *key), ARGIN(PMC *value))
-{
-    ASSERT_ARGS(check_set_std_props)
-
-    /*
-     * s2 in STRING_equal is freed here
-     */
-    if (STRING_equal(interp, key, CONST_STRING(interp, "_ro"))) {
-        /* pmc should set/clear readonly */
-        const INTVAL on = VTABLE_get_bool(interp, value);
-
-        /* morph to Const/normal class or readonly class */
-        if (on && (pmc->vtable->flags & VTABLE_HAS_CONST_TOO))
-            pmc->vtable = interp->vtables[pmc->vtable->base_type + 1];
-        else if (!on && (pmc->vtable->flags & (VTABLE_IS_CONST_FLAG)))
-            VTABLE_morph(interp, pmc, interp->vtables[pmc->vtable->base_type - 1]->pmc_class);
-        else if (on && (pmc->vtable->flags & VTABLE_HAS_READONLY_FLAG))
-            pmc->vtable = pmc->vtable->ro_variant_vtable;
-        else if (!on && (pmc->vtable->flags & VTABLE_IS_READONLY_FLAG)
-                && pmc->vtable->ro_variant_vtable)
-            pmc->vtable = pmc->vtable->ro_variant_vtable;
-        else
-            return 0;
-
-        return 1;
-    }
-
-    return 0;
-}
-
-/*
-
-=item C<static void propagate_std_props(PARROT_INTERP, PMC *self, PMC
-*prop_hash)>
-
-Set pending standard properties in C<prop_hash>.
-
-=cut
-
-*/
-
-static void
-propagate_std_props(PARROT_INTERP, ARGIN(PMC *self), ARGIN(PMC *prop_hash))
-{
-    ASSERT_ARGS(propagate_std_props)
-
-    if (self->vtable->flags & (VTABLE_IS_CONST_FLAG | VTABLE_IS_READONLY_FLAG)){
-        PMC * const pmc_true  = Parrot_pmc_new_init_int(interp,
-                enum_class_Integer, 1);
-        VTABLE_set_pmc_keyed_str(interp, prop_hash, CONST_STRING(interp, "_ro"), pmc_true);
-    }
-}
-
-/*
-
-=item C<static INTVAL has_pending_std_props(const PMC *self)>
-
-Returns true if propagate_std_props() would create a non-empty prophash.
-
-=cut
-
-*/
-
-static INTVAL
-has_pending_std_props(ARGIN(const PMC *self))
-{
-    ASSERT_ARGS(has_pending_std_props)
-
-    if (self->vtable->flags & (VTABLE_IS_CONST_FLAG | VTABLE_IS_READONLY_FLAG))
-        return 1;
-    else
-        return 0;
-}
-
-
-/*
-
-=item C<static PMC* check_get_std_props(PARROT_INTERP, const PMC *self, const
-STRING *key)>
-
-Checks if we can infer the value of C<key> property from C<self> without
-looking at its prophash. Returns C<PMCNULL> if not, returns the value otherwise.
-
-=cut
-*/
-
-PARROT_WARN_UNUSED_RESULT
-PARROT_CAN_RETURN_NULL
-static PMC*
-check_get_std_props(PARROT_INTERP, ARGIN(const PMC *self), ARGIN(const STRING *key))
-{
-    ASSERT_ARGS(check_get_std_props)
-
-    if ((self->vtable->flags & (VTABLE_IS_CONST_FLAG | VTABLE_IS_READONLY_FLAG))
-       && STRING_equal(interp, key, CONST_STRING(interp, "_ro"))) {
-        PMC * const ret_val = Parrot_pmc_new_init_int(interp,
-                enum_class_Integer, 1);
-        return ret_val;
-    }
-    else
-        return PMCNULL;
-}
-
-/*
-
-=item C<static PMC* make_prop_hash(PARROT_INTERP, PMC *self)>
-
-Create a property hash for C<self>. Returns the created hash. Inferred
-properties will be added to the hash.
-
-=cut
-
-*/
-
-PARROT_CANNOT_RETURN_NULL
-PARROT_WARN_UNUSED_RESULT
-static PMC*
-make_prop_hash(PARROT_INTERP, ARGMOD(PMC *self))
-{
-    ASSERT_ARGS(make_prop_hash)
-
-    PMC * const prop = PObj_constant_TEST(self)
-                       ? Parrot_pmc_new_constant(interp, enum_class_Hash)
-                       : Parrot_pmc_new(interp, enum_class_Hash);
-
-    propagate_std_props(interp, self, prop);
-    return prop;
-}
-
 pmclass default abstract {
 
 /*
@@ -338,7 +138,9 @@ Does nothing.
 
 */
 
-    VTABLE void init() {
+    VTABLE void init() :no_wb {
+        UNUSED(INTERP);
+        UNUSED(SELF);
     }
 
 /*
@@ -372,7 +174,7 @@ implement it everywhere.
 
 */
 
-    VTABLE void init_int(INTVAL initvalue) {
+    VTABLE void init_int(INTVAL initvalue) :manual_wb {
         SELF.init();
         SELF.set_integer_native(initvalue);
     }
@@ -387,7 +189,9 @@ Does nothing.
 
 */
 
-    VTABLE void destroy() {
+    VTABLE void destroy() :no_wb {
+        UNUSED(INTERP);
+        UNUSED(SELF);
     }
 
 /*
@@ -401,13 +205,13 @@ calls init().
 
 */
 
-    VTABLE PMC *instantiate(PMC *init) {
+    VTABLE PMC *instantiate(PMC *init) :no_wb {
         const INTVAL type = VTABLE_type(INTERP, SELF);
 
         /* Ensure no looping, as Parrot_pmc_new calls the instantiate vtable entry for
          * classes. */
         if (PObj_is_class_TEST(SELF))
-            Parrot_ex_throw_from_c_args(INTERP, NULL, 1,
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_INVALID_OPERATION,
                     "All high-level classes should override instantiate");
 
         if (!PMC_IS_NULL(init))
@@ -426,82 +230,9 @@ Panics with a "no custom mark routine defined" error message.
 
 */
 
-    VTABLE void mark() {
+    VTABLE void mark() :no_wb {
+        UNUSED(SELF);
         PANIC(INTERP, "custom_mark flag set but no custom mark routine defined");
-    }
-
-/*
-
-=item C<PMC *getprop(STRING *key)>
-
-Returns the property for C<*key>. If no property is defined then the
-NULL PMC is returned.
-
-=cut
-
-*/
-
-    VTABLE PMC *getprop(STRING *key) {
-        if (PMC_IS_NULL(PMC_metadata(SELF)))
-            return check_get_std_props(INTERP, SELF, key);
-        else
-            return VTABLE_get_pmc_keyed_str(INTERP, PMC_metadata(SELF), key);
-    }
-
-/*
-
-=item C<void setprop(STRING *key, PMC *value)>
-
-Sets the property for C<*key> to C<*value>.
-
-=cut
-
-*/
-
-    VTABLE void setprop(STRING *key, PMC *value) {
-        if (check_set_std_props(INTERP, SELF, key, value))
-            return;
-
-        if (PMC_IS_NULL(PMC_metadata(SELF)))
-            PMC_metadata(SELF) = make_prop_hash(INTERP, SELF);
-
-        VTABLE_set_pmc_keyed_str(INTERP, PMC_metadata(SELF), key, value);
-    }
-
-/*
-
-=item C<void delprop(STRING *key)>
-
-Deletes the property for C<*key>.
-
-=cut
-
-*/
-
-    VTABLE void delprop(STRING *key) {
-        if (!PMC_IS_NULL(PMC_metadata(SELF)))
-            VTABLE_delete_keyed_str(INTERP, PMC_metadata(SELF), key);
-    }
-
-/*
-
-=item C<PMC *getprops()>
-
-Returns the PMC's properties or the NULL PMC if no properties exist.
-
-=cut
-
-*/
-
-    VTABLE PMC *getprops() {
-        if (PMC_IS_NULL(PMC_metadata(SELF))) {
-            if (has_pending_std_props(SELF))
-                PMC_metadata(SELF) = make_prop_hash(INTERP, SELF);
-            else
-                return PMCNULL;
-        }
-
-        return PMC_metadata(SELF);
     }
 
 /*
@@ -514,7 +245,8 @@ Returns the PMC's type.
 
 */
 
-    VTABLE INTVAL type() {
+    VTABLE INTVAL type() :no_wb {
+        UNUSED(INTERP);
         return SELF->vtable->base_type;
     }
 
@@ -528,7 +260,8 @@ Returns the name of the PMC.
 
 */
 
-    VTABLE STRING *name() {
+    VTABLE STRING *name() :no_wb {
+        UNUSED(INTERP);
         return SELF->vtable->whoami;
     }
 
@@ -544,8 +277,11 @@ Role-y.
 
 */
 
-    VTABLE void add_attribute(STRING *name, PMC *type) {
-        Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_INVALID_OPERATION,
+    VTABLE void add_attribute(STRING *name, PMC *type) :no_wb {
+        UNUSED(name);
+        UNUSED(type);
+        UNUSED(SELF);
+        Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_INVALID_OPERATION,
             "Cannot add attribute to non-class");
     }
 
@@ -568,7 +304,7 @@ Store the method as a global in the namespace of this class.
 
 */
 
-    VTABLE PMC *get_namespace() {
+    VTABLE PMC *get_namespace() :no_wb {
 
         /* Because singletons are shared between interpreters, we need to make
          * special effort to use the right namespace for method lookups.
@@ -582,7 +318,7 @@ Store the method as a global in the namespace of this class.
     }
 
 
-    VTABLE PMC *find_method(STRING *method_name) {
+    VTABLE PMC *find_method(STRING *method_name) :no_wb {
         return Parrot_find_method_with_cache(INTERP, SELF, method_name);
     }
 
@@ -601,7 +337,7 @@ C<get_integer_keyed()> with it.
 
 */
 
-    VTABLE INTVAL get_integer_keyed_int(INTVAL key) {
+    VTABLE INTVAL get_integer_keyed_int(INTVAL key) :no_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         return SELF.get_integer_keyed(r_key);
     }
@@ -617,7 +353,7 @@ C<get_number_keyed()> with it.
 
 */
 
-    VTABLE FLOATVAL get_number_keyed_int(INTVAL key) {
+    VTABLE FLOATVAL get_number_keyed_int(INTVAL key) :no_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         return SELF.get_number_keyed(r_key);
     }
@@ -634,7 +370,7 @@ C<get_string_keyed()> with it.
 
 */
 
-    VTABLE STRING *get_string_keyed_int(INTVAL key) {
+    VTABLE STRING *get_string_keyed_int(INTVAL key) :no_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         return SELF.get_string_keyed(r_key);
     }
@@ -650,23 +386,9 @@ C<get_pmc_keyed()> with it.
 
 */
 
-    VTABLE PMC *get_pmc_keyed_int(INTVAL key) {
+    VTABLE PMC *get_pmc_keyed_int(INTVAL key) :no_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         return SELF.get_pmc_keyed(r_key);
-    }
-
-/*
-
-=item C<void *get_pointer()>
-
-Returns the address of the PMC.
-
-=cut
-
-*/
-
-    VTABLE void *get_pointer() {
-        return SELF;
     }
 
 /*
@@ -680,7 +402,8 @@ same pointer).
 
 */
 
-    VTABLE INTVAL is_same(PMC *value) {
+    VTABLE INTVAL is_same(PMC *value) :no_wb {
+        UNUSED(INTERP);
         return SELF == value;
     }
 
@@ -696,16 +419,19 @@ Defaults fall back to C<set_pmc> and C<set_string_native>.
 
 */
 
-    VTABLE void assign_pmc(PMC *value) {
+    VTABLE void assign_pmc(PMC *value) :manual_wb {
         STRING * const undef = CONST_STRING(INTERP, "Undef");
 
         if (VTABLE_isa(INTERP, value, undef))
+        {
             Parrot_pmc_reuse(INTERP, SELF, value->vtable->base_type, 0);
+            PARROT_GC_WRITE_BARRIER(INTERP, SELF);
+        }
         else
             SELF.set_pmc(value);
     }
 
-    VTABLE void assign_string_native(STRING *value) {
+    VTABLE void assign_string_native(STRING *value) :manual_wb {
         SELF.set_string_native(value);
     }
 
@@ -734,7 +460,7 @@ and C<value>.
 
 */
 
-    VTABLE void set_integer_keyed_int(INTVAL key, INTVAL value) {
+    VTABLE void set_integer_keyed_int(INTVAL key, INTVAL value) :manual_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         SELF.set_integer_keyed(r_key, value);
     }
@@ -750,7 +476,7 @@ and C<value>.
 
 */
 
-    VTABLE void set_number_keyed_int(INTVAL key, FLOATVAL value) {
+    VTABLE void set_number_keyed_int(INTVAL key, FLOATVAL value) :manual_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         SELF.set_number_keyed(r_key, value);
     }
@@ -766,7 +492,7 @@ and C<value>.
 
 */
 
-    VTABLE void set_string_keyed_int(INTVAL key, STRING *string) {
+    VTABLE void set_string_keyed_int(INTVAL key, STRING *string) :manual_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         SELF.set_string_keyed(r_key, string);
     }
@@ -782,7 +508,7 @@ and C<value>.
 
 */
 
-    VTABLE void set_pmc_keyed_int(INTVAL key, PMC *value) {
+    VTABLE void set_pmc_keyed_int(INTVAL key, PMC *value) :manual_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         SELF.set_pmc_keyed(r_key, value);
     }
@@ -797,8 +523,8 @@ Calculate hashvalue for PMC. Default behaviour stringify and use string.
 
 */
 
-    VTABLE INTVAL hashvalue() {
-        STRING *s = SELF.get_string();
+    VTABLE INTVAL hashvalue() :no_wb {
+        STRING * const s = SELF.get_string();
         return STRING_hash(INTERP, s, INTERP->hash_seed);
     }
 
@@ -812,7 +538,7 @@ Default fallback. Performs a multiple dispatch call for 'is_equal'.
 
 */
 
-    VTABLE INTVAL is_equal(PMC *value) {
+    VTABLE INTVAL is_equal(PMC *value) :no_wb {
         INTVAL retval;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "is_equal", "PP->I", SELF, value, &retval);
@@ -830,7 +556,7 @@ Default fallback. Performs a multiple dispatch call for 'is_equal_num'.
 
 */
 
-    VTABLE INTVAL is_equal_num(PMC *value) {
+    VTABLE INTVAL is_equal_num(PMC *value) :no_wb {
         INTVAL retval;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "is_equal_num", "PP->I", SELF, value, &retval);
@@ -848,7 +574,7 @@ Default fallback. Performs a multiple dispatch call for 'is_equal'.
 
 */
 
-    VTABLE INTVAL is_equal_string(PMC *value) {
+    VTABLE INTVAL is_equal_string(PMC *value) :no_wb {
         INTVAL retval;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "is_equal_string", "PP->I", SELF, value, &retval);
@@ -867,7 +593,7 @@ C<exists_keyed()> with it.
 
 */
 
-    VTABLE INTVAL exists_keyed_int(INTVAL key) {
+    VTABLE INTVAL exists_keyed_int(INTVAL key) :no_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         return SELF.exists_keyed(r_key);
     }
@@ -882,7 +608,9 @@ Returns true.
 
 */
 
-    VTABLE INTVAL defined() {
+    VTABLE INTVAL defined() :no_wb {
+        UNUSED(INTERP);
+        UNUSED(SELF);
         return 1;
     }
 
@@ -897,7 +625,7 @@ C<defined_keyed()> with it.
 
 */
 
-    VTABLE INTVAL defined_keyed_int(INTVAL key) {
+    VTABLE INTVAL defined_keyed_int(INTVAL key) :no_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         return SELF.defined_keyed(r_key);
     }
@@ -912,25 +640,9 @@ Converts C<key> to a PMC key and calls C<delete_keyed()> with it.
 
 */
 
-    VTABLE void delete_keyed_int(INTVAL key) {
+    VTABLE void delete_keyed_int(INTVAL key) :manual_wb {
         PMC *const r_key = INT2KEY(INTERP, key);
         SELF.delete_keyed(r_key);
-    }
-
-/*
-
-=item C<INTVAL can(STRING *method)>
-
-Reports whether the PMC "can" perform C<method>.
-If the PMC implements the vtable function C<method>,
-true (1) is returned; otherwise, false (0) is returned.
-
-=cut
-
-*/
-
-    VTABLE INTVAL can(STRING *method) {
-        return !PMC_IS_NULL(VTABLE_find_method(INTERP, SELF, method));
     }
 
 /*
@@ -945,7 +657,7 @@ true (1) is returned; otherwise, false (0) is returned.
 
 */
 
-    VTABLE INTVAL does(STRING *interface_name) {
+    VTABLE INTVAL does(STRING *interface_name) :no_wb {
         return Parrot_pmc_type_does(INTERP, interface_name, SELF->vtable->base_type);
     }
 
@@ -959,8 +671,10 @@ Reports whether the PMC "does" the C<role>.
 
 */
 
-    VTABLE INTVAL does_pmc(PMC *role) {
-        UNUSED(role)
+    VTABLE INTVAL does_pmc(PMC *role) :no_wb {
+        UNUSED(INTERP);
+        UNUSED(SELF);
+        UNUSED(role);
         /* No C-level roles yet. */
         return 0;
     }
@@ -977,13 +691,13 @@ true (1) is returned; otherwise, false (0) is returned.
 
 */
 
-    VTABLE INTVAL isa_pmc(PMC *lookup) {
+    VTABLE INTVAL isa_pmc(PMC *lookup) :no_wb {
         if (PMC_IS_NULL(lookup))
             return 0;
         else {
             Hash   * const isa_hash = SELF->vtable->isa_hash;
             STRING * const pmc_name = VTABLE_get_string(INTERP, lookup);
-            return parrot_hash_exists(INTERP, isa_hash, pmc_name);
+            return Parrot_hash_exists(INTERP, isa_hash, pmc_name);
         }
     }
 
@@ -999,7 +713,7 @@ true (1) is returned; otherwise, false (0) is returned.
 
 */
 
-    VTABLE INTVAL isa(STRING *_class) {
+    VTABLE INTVAL isa(STRING *_class) :no_wb {
         if (SELF->vtable->whoami == _class)
             return 1;
         else {
@@ -1007,7 +721,7 @@ true (1) is returned; otherwise, false (0) is returned.
             if (!isa_hash)
                 return STRING_equal(INTERP, SELF->vtable->whoami, _class);
 
-            return parrot_hash_exists(INTERP, isa_hash, (void *)_class);
+            return Parrot_hash_exists(INTERP, isa_hash, (void *)_class);
         }
     }
 
@@ -1021,9 +735,9 @@ Provides introspection of a specific piece of information about the PMC.
 
 */
 
-    VTABLE PMC *inspect_str(STRING *name) {
+    VTABLE PMC *inspect_str(STRING *name) :no_wb {
         if (STRING_equal(INTERP, name, CONST_STRING(INTERP, "flags"))) {
-            PMC *found = Parrot_pmc_new_init_int(INTERP, enum_class_Integer,
+            PMC * const found = Parrot_pmc_new_init_int(INTERP, enum_class_Integer,
                     (INTVAL)PObj_get_FLAGS(SELF));
             return found;
         }
@@ -1045,7 +759,7 @@ inspect_str.
 =cut
 
 */
-    VTABLE PMC *inspect() {
+    VTABLE PMC *inspect() :no_wb {
         PMC    * const metadata    = Parrot_pmc_new(INTERP, enum_class_Hash);
         STRING * const flags_str   = CONST_STRING(INTERP, "flags");
 
@@ -1059,12 +773,12 @@ inspect_str.
 
 =item C<PMC *get_class()>
 
-Returns SELF. A PMC is its own class.
+Returns the class or PMCProxy of the type of the PMC.
 
 =cut
 
 */
-    VTABLE PMC *get_class() {
+    VTABLE PMC *get_class() :no_wb {
         PMC * const ns     = VTABLE_get_namespace(INTERP, SELF);
         PMC *_class = PMCNULL;
 
@@ -1095,13 +809,13 @@ the string name passed in.
 =cut
 
 */
-    VTABLE PMC *get_attr_keyed(PMC *key, STRING *name) {
-        UNUSED(key)
+    VTABLE PMC *get_attr_keyed(PMC *key, STRING *name) :no_wb {
+        UNUSED(key);
         return VTABLE_get_attr_str(INTERP, SELF, name);
     }
 
-    VTABLE void set_attr_keyed(PMC *key, STRING *name, PMC *value) {
-        UNUSED(key)
+    VTABLE void set_attr_keyed(PMC *key, STRING *name, PMC *value) :manual_wb {
+        UNUSED(key);
         VTABLE_set_attr_str(INTERP, SELF, name, value);
     }
 
@@ -1116,12 +830,12 @@ Add class C<parent> to the list of our parents.
 */
 
     VTABLE void add_parent(PMC *parent) {
-        UNUSED(parent)
+        UNUSED(parent);
         if (!PObj_is_class_TEST(SELF))
-            Parrot_ex_throw_from_c_args(INTERP, NULL, 1,
+            Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_INVALID_OPERATION,
                 "Only classes can be subclassed");
 
-        Parrot_ex_throw_from_c_args(INTERP, NULL, 1,
+        Parrot_ex_throw_from_c_noargs(INTERP, EXCEPTION_INVALID_OPERATION,
                 "All classes should override add_parent");
     }
 
@@ -1135,7 +849,10 @@ Used by GC to mark the PMC.
 
 */
 
-    VTABLE void visit(PMC *info) {
+    VTABLE void visit(PMC *info) :no_wb {
+        UNUSED(INTERP);
+        UNUSED(SELF);
+        UNUSED(info);
     }
 
 /*
@@ -1148,7 +865,7 @@ Clones this PMC.  By default, this just does a freeze and thaw.
 
 */
 
-    VTABLE PMC* clone() {
+    VTABLE PMC* clone() :no_wb {
         return Parrot_thaw(INTERP, Parrot_freeze(INTERP, SELF));
     }
 
@@ -1162,8 +879,10 @@ Does nothing.
 
 */
 
-    VTABLE void freeze(PMC *info) {
-        UNUSED(info)
+    VTABLE void freeze(PMC *info) :no_wb {
+        UNUSED(INTERP);
+        UNUSED(SELF);
+        UNUSED(info);
         /* default - no action */
     }
 
@@ -1177,7 +896,8 @@ Initializes the PMC during unarchiving.
 
 */
 
-    VTABLE void thaw(PMC *info) {
+    VTABLE void thaw(PMC *info) :manual_wb { /* WB in init */
+        UNUSED(info);
         /* default - initialize the PMC */
         SELF.init();
     }
@@ -1192,8 +912,10 @@ Does nothing.
 
 */
 
-    VTABLE void thawfinish(PMC *info) {
-        UNUSED(info)
+    VTABLE void thawfinish(PMC *info) :no_wb {
+        UNUSED(INTERP);
+        UNUSED(SELF);
+        UNUSED(info);
         /* default - no action */
     }
 
@@ -1207,7 +929,7 @@ Default fallback. Performs a multiple dispatch call for 'add'.
 
 */
 
-    VTABLE PMC *add(PMC *value, PMC *dest) {
+    VTABLE PMC *add(PMC *value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "add", "PPP->P", SELF, value, dest, &result);
@@ -1224,7 +946,7 @@ Default fallback. Performs a multiple dispatch call for 'add_int'.
 
 */
 
-    VTABLE PMC *add_int(INTVAL value, PMC *dest) {
+    VTABLE PMC *add_int(INTVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "add_int", "PIP->P", SELF, value, dest, &result);
@@ -1241,7 +963,7 @@ Default fallback. Performs a multiple dispatch call for 'add_float'.
 
 */
 
-    VTABLE PMC *add_float(FLOATVAL value, PMC *dest) {
+    VTABLE PMC *add_float(FLOATVAL value, PMC *dest) :no_wb {
         dest = Parrot_pmc_new(INTERP, VTABLE_type(INTERP, SELF));
 
         VTABLE_set_number_native(INTERP, dest,
@@ -1304,7 +1026,7 @@ Default fallback. Performs a multiple dispatch call for 'subtract'.
 
 */
 
-    VTABLE PMC *subtract(PMC *value, PMC *dest) {
+    VTABLE PMC *subtract(PMC *value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "subtract", "PPP->P", SELF, value, dest, &result);
@@ -1321,7 +1043,7 @@ Default fallback. Performs a multiple dispatch call for 'subtract_int'.
 
 */
 
-    VTABLE PMC *subtract_int(INTVAL value, PMC *dest) {
+    VTABLE PMC *subtract_int(INTVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "subtract_int", "PIP->P", SELF, value, dest, &result);
@@ -1338,7 +1060,7 @@ Default fallback. Performs a multiple dispatch call for 'subtract_float'.
 
 */
 
-    VTABLE PMC *subtract_float(FLOATVAL value, PMC *dest) {
+    VTABLE PMC *subtract_float(FLOATVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "subtract_float", "PNP->P", SELF, value, dest, &result);
@@ -1400,7 +1122,7 @@ Default fallback. Performs a multiple dispatch call for 'multiply'.
 
 */
 
-    VTABLE PMC *multiply(PMC *value, PMC *dest) {
+    VTABLE PMC *multiply(PMC *value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "multiply", "PPP->P", SELF, value, dest, &result);
@@ -1417,7 +1139,7 @@ Default fallback. Performs a multiple dispatch call for 'multiply_int'.
 
 */
 
-    VTABLE PMC *multiply_int(INTVAL value, PMC *dest) {
+    VTABLE PMC *multiply_int(INTVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "multiply_int", "PIP->P", SELF, value, dest, &result);
@@ -1434,7 +1156,7 @@ Default fallback. Performs a multiple dispatch call for 'multiply_float'.
 
 */
 
-    VTABLE PMC *multiply_float(FLOATVAL value, PMC *dest) {
+    VTABLE PMC *multiply_float(FLOATVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "multiply_float", "PNP->P", SELF, value, dest, &result);
@@ -1496,7 +1218,7 @@ Default fallback. Performs a multiple dispatch call for 'divide'.
 
 */
 
-    VTABLE PMC *divide(PMC *value, PMC *dest) {
+    VTABLE PMC *divide(PMC *value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "divide", "PPP->P", SELF, value, dest, &result);
@@ -1513,7 +1235,7 @@ Default fallback. Performs a multiple dispatch call for 'divide_int'.
 
 */
 
-    VTABLE PMC *divide_int(INTVAL value, PMC *dest) {
+    VTABLE PMC *divide_int(INTVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "divide_int", "PIP->P", SELF, value, dest, &result);
@@ -1530,7 +1252,7 @@ Default fallback. Performs a multiple dispatch call for 'divide_float'.
 
 */
 
-    VTABLE PMC *divide_float(FLOATVAL value, PMC *dest) {
+    VTABLE PMC *divide_float(FLOATVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "divide_float", "PNP->P", SELF, value, dest, &result);
@@ -1592,7 +1314,7 @@ Default fallback. Performs a multiple dispatch call for 'floor_divide'.
 
 */
 
-    VTABLE PMC *floor_divide(PMC *value, PMC *dest) {
+    VTABLE PMC *floor_divide(PMC *value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "floor_divide", "PPP->P", SELF, value, dest, &result);
@@ -1609,7 +1331,7 @@ Default fallback. Performs a multiple dispatch call for 'floor_divide_int'.
 
 */
 
-    VTABLE PMC *floor_divide_int(INTVAL value, PMC *dest) {
+    VTABLE PMC *floor_divide_int(INTVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "floor_divide_int", "PIP->P", SELF, value, dest, &result);
@@ -1626,7 +1348,7 @@ Default fallback. Performs a multiple dispatch call for 'floor_divide_float'.
 
 */
 
-    VTABLE PMC *floor_divide_float(FLOATVAL value, PMC *dest) {
+    VTABLE PMC *floor_divide_float(FLOATVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "floor_divide_float", "PNP->P", SELF, value, dest, &result);
@@ -1688,7 +1410,7 @@ Default fallback. Performs a multiple dispatch call for 'modulus'.
 
 */
 
-    VTABLE PMC *modulus(PMC *value, PMC *dest) {
+    VTABLE PMC *modulus(PMC *value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "modulus", "PPP->P", SELF, value, dest, &result);
@@ -1705,7 +1427,7 @@ Default fallback. Performs a multiple dispatch call for 'modulus_int'.
 
 */
 
-    VTABLE PMC *modulus_int(INTVAL value, PMC *dest) {
+    VTABLE PMC *modulus_int(INTVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "modulus_int", "PIP->P", SELF, value, dest, &result);
@@ -1722,7 +1444,7 @@ Default fallback. Performs a multiple dispatch call for 'modulus_float'.
 
 */
 
-    VTABLE PMC *modulus_float(FLOATVAL value, PMC *dest) {
+    VTABLE PMC *modulus_float(FLOATVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "modulus_float", "PNP->P", SELF, value, dest, &result);
@@ -1784,7 +1506,7 @@ Default fallback. Performs a multiple dispatch call for 'cmp'.
 
 */
 
-    VTABLE INTVAL cmp(PMC *value) {
+    VTABLE INTVAL cmp(PMC *value) :no_wb {
         INTVAL retval;
 
         /* Don't multidispatch if you've got two pointers to the same PMC. They
@@ -1808,7 +1530,7 @@ Default fallback. Performs a multiple dispatch call for 'cmp_num'.
 
 */
 
-    VTABLE INTVAL cmp_num(PMC *value) {
+    VTABLE INTVAL cmp_num(PMC *value) :no_wb {
         INTVAL retval;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "cmp_num", "PP->I", SELF, value, &retval);
@@ -1826,7 +1548,7 @@ Default fallback. Performs a multiple dispatch call for 'cmp_string'.
 
 */
 
-    VTABLE INTVAL cmp_string(PMC *value) {
+    VTABLE INTVAL cmp_string(PMC *value) :no_wb {
         INTVAL retval;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "cmp_string", "PP->I", SELF, value, &retval);
@@ -1844,7 +1566,7 @@ Default fallback. Performs a multiple dispatch call for 'cmp_pmc'.
 
 */
 
-    VTABLE PMC *cmp_pmc(PMC *value) {
+    VTABLE PMC *cmp_pmc(PMC *value) :no_wb {
         PMC *retval;
 
         /* Don't multidispatch if you've got two pointers to the same PMC. They
@@ -1868,7 +1590,7 @@ Default fallback. Performs a multiple dispatch call for 'concatenate'.
 
 */
 
-    VTABLE PMC *concatenate(PMC *value, PMC *dest) {
+    VTABLE PMC *concatenate(PMC *value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "concatenate", "PPP->P", SELF, value, dest, &result);
@@ -1885,7 +1607,7 @@ Default fallback. Performs a multiple dispatch call for 'concatenate_str'.
 
 */
 
-    VTABLE PMC *concatenate_str(STRING *value, PMC *dest) {
+    VTABLE PMC *concatenate_str(STRING *value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "concatenate_str", "PSP->P", SELF, value, dest, &result);
@@ -1932,7 +1654,7 @@ Default fallback. Performs a multiple dispatch call for 'repeat'.
 
 */
 
-    VTABLE PMC *repeat(PMC *value, PMC *dest) {
+    VTABLE PMC *repeat(PMC *value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "repeat", "PPP->P", SELF, value, dest, &result);
@@ -1949,7 +1671,7 @@ Default fallback. Performs a multiple dispatch call for 'repeat_int'.
 
 */
 
-    VTABLE PMC *repeat_int(INTVAL value, PMC *dest) {
+    VTABLE PMC *repeat_int(INTVAL value, PMC *dest) :no_wb {
         PMC *result = PMCNULL;
         Parrot_mmd_multi_dispatch_from_c_args(INTERP,
                 "repeat_int", "PIP->P", SELF, value, dest, &result);

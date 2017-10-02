@@ -1,13 +1,14 @@
 /*
-Copyright (C) 2010, Parrot Foundation.
+Copyright (C) 2010-2014, Parrot Foundation.
 
 =head1 NAME
 
-src/pmc/nativepccmethod.pmc - Native PCC Method PMC
+src/pmc/nativepccmethod.pmc - NativePCCMethod PMC
 
 =head1 DESCRIPTION
 
-Container for native functions that handle PCC on their own.
+Container for native functions that handle PCC, the Parrot Calling Convention,
+on their own.
 
 =head2 Methods
 
@@ -38,7 +39,7 @@ Initializes the PMC with a C<NULL> function pointer.
 */
 
     VTABLE void init() {
-        Parrot_NativePCCMethod_attributes *attrs = PARROT_NATIVEPCCMETHOD(SELF);
+        Parrot_NativePCCMethod_attributes * const attrs = PARROT_NATIVEPCCMETHOD(SELF);
 
         attrs->func               = NULL;
         attrs->signature          = STRINGNULL;
@@ -63,7 +64,8 @@ Set the pointer to the native function and the PCC signature.
 */
 
 
-    VTABLE void *get_pointer() {
+    VTABLE void *get_pointer() :no_wb {
+        UNUSED(INTERP)
         return PARROT_NATIVEPCCMETHOD(SELF)->func;
     }
 
@@ -84,11 +86,12 @@ NULLness check.
 
 */
 
-    VTABLE INTVAL defined() {
+    VTABLE INTVAL defined() :no_wb {
+        UNUSED(INTERP)
         return !! PARROT_NATIVEPCCMETHOD(SELF)->func;
     }
 
-    VTABLE INTVAL get_bool() {
+    VTABLE INTVAL get_bool() :no_wb {
         return STATICSELF.defined();
     }
 
@@ -102,18 +105,18 @@ Call the function pointer.
 
 */
 
-    VTABLE opcode_t *invoke(void *next) {
+    VTABLE opcode_t *invoke(void *next) :no_wb {
         void                *func;
         native_pcc_method_t  fptr;
 
         GET_ATTR_func(INTERP, SELF, func);
         if (!func)
-            Parrot_ex_throw_from_c_args(INTERP, NULL,
+            Parrot_ex_throw_from_c_noargs(INTERP,
                     EXCEPTION_INVALID_OPERATION,
                     "attempt to call NULL native function");
 
         fptr = (native_pcc_method_t)D2FPTR(func);
-        fptr(INTERP);
+        fptr(INTERP, SELF);
 
         /*
          * If this function was tailcalled, the return result
@@ -125,7 +128,7 @@ Call the function pointer.
         {
             PMC *cont = INTERP->current_cont;
 
-            if (cont && cont != NEED_CONTINUATION
+            if (!PMC_IS_NULL(cont)
             && (PObj_get_FLAGS(cont) & SUB_FLAG_TAILCALL)) {
                 cont = Parrot_pcc_get_continuation(interp, CURRENT_CONTEXT(interp));
                 next = VTABLE_invoke(INTERP, cont, next);
@@ -145,12 +148,12 @@ Mark contained elements for GC.
 
 */
 
-    VTABLE void mark() {
-        Parrot_NativePCCMethod_attributes *attrs = PARROT_NATIVEPCCMETHOD(SELF);
+    VTABLE void mark() :no_wb {
+        const Parrot_NativePCCMethod_attributes * const attrs = PARROT_NATIVEPCCMETHOD(SELF);
 
-        Parrot_gc_mark_STRING_alive(interp, attrs->signature);
-        Parrot_gc_mark_STRING_alive(interp, attrs->mmd_long_signature);
-        Parrot_gc_mark_PMC_alive(interp,    attrs->mmd_multi_sig);
+        Parrot_gc_mark_STRING_alive(INTERP, attrs->signature);
+        Parrot_gc_mark_STRING_alive(INTERP, attrs->mmd_long_signature);
+        Parrot_gc_mark_PMC_alive(INTERP,    attrs->mmd_multi_sig);
     }
 
 /*
@@ -163,10 +166,10 @@ Create a clone of this PMC.
 
 */
 
-    VTABLE PMC *clone() {
-        PMC *ret = Parrot_pmc_new(INTERP, SELF->vtable->base_type);
-        Parrot_NativePCCMethod_attributes *self_attrs = PARROT_NATIVEPCCMETHOD(SELF);
-        Parrot_NativePCCMethod_attributes *ret_attrs  = PARROT_NATIVEPCCMETHOD(ret);
+    VTABLE PMC *clone() :no_wb {
+        PMC * const ret = Parrot_pmc_new(INTERP, SELF->vtable->base_type);
+        const Parrot_NativePCCMethod_attributes * const self_attrs = PARROT_NATIVEPCCMETHOD(SELF);
+        Parrot_NativePCCMethod_attributes * const ret_attrs  = PARROT_NATIVEPCCMETHOD(ret);
 
         ret_attrs->func               = self_attrs->func;
         ret_attrs->signature          = self_attrs->signature;
@@ -174,6 +177,24 @@ Create a clone of this PMC.
         ret_attrs->mmd_multi_sig      = self_attrs->mmd_multi_sig;
 
         return ret;
+    }
+
+/*
+
+=item C<METHOD get_multisig()>
+
+Return the MMD signature PMC, if any or C<PMCNULL>.
+
+=cut
+
+*/
+
+    METHOD get_multisig() :no_wb {
+        PMC *sig;
+        GET_ATTR_mmd_multi_sig(INTERP, SELF, sig);
+        if (PMC_IS_NULL(sig))
+            sig = PMCNULL;
+        RETURN(PMC *sig);
     }
 }
 

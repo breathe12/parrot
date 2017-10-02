@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2010, Parrot Foundation.
+# Copyright (C) 2010-2012, Parrot Foundation.
 
 =head1 NAME
 
@@ -21,7 +21,7 @@ Tests C<ByteBuffer> PMC..
 
 .sub 'main' :main
     .include 'test_more.pir'
-    plan(38)
+    plan(57)
 
     test_init()
     test_set_string()
@@ -32,6 +32,8 @@ Tests C<ByteBuffer> PMC..
     test_alloc()
     test_iterate()
     test_invalid()
+    test_get_chars()
+    test_resize()
 .end
 
 ################################################################
@@ -361,6 +363,101 @@ catch_content:
     ok(1, "get_string with invalid content throws")
 end:
 .end
+
+.sub get_chars_outofbounds
+    .local pmc bb
+    .local string s
+    bb = new ['ByteBuffer']
+    bb = 'a'
+    s = bb.'get_chars'(2, 1, 'ascii')
+.end
+
+.sub test_get_chars
+    .local pmc bb
+    .local string s
+    bb = new ['ByteBuffer']
+
+    bb = 'plain ascii string'
+    s = bb.'get_chars'(6, 5, 'ascii')
+    is( s, 'ascii', 'get_chars ascii' )
+
+    bb = iso-8859-1:"D\x{E9}p\x{EA}che"
+    s = bb.'get_chars'(1, 3, 'iso-8859-1')
+    is( s, utf8:"épê", 'get_chars iso-8859-1' )
+
+    bb = binary:"D\x{E9}p\x{EA}che"
+    s = bb.'get_chars'(3, 3, 'binary')
+    is( s, utf8:"êch", 'get_chars binary' )
+
+    bb = ucs2:"Grüße"
+    s = bb.'get_chars'(0, 3, 'ucs2')
+    is( s, utf8:"Grü", 'get_chars ucs2' )
+    s = bb.'get_chars'(4, 3, 'ucs2')
+    is( s, utf8:"üße", 'get_chars ucs2' )
+
+    bb = ucs4:"Grüße"
+    s = bb.'get_chars'(0, 3, 'ucs4')
+    is( s, utf16:"Grü", 'get_chars ucs4' )
+    s = bb.'get_chars'(8, 3, 'ucs4')
+    is( s, utf16:"üße", 'get_chars ucs4' )
+
+    .const 'Sub' get_chars_oob = 'get_chars_outofbounds'
+    throws_type(get_chars_oob, .EXCEPTION_OUT_OF_BOUNDS, 'get_chars out of bounds')
+.end
+
+# GH 835
+.sub test_resize
+    .local int i
+    .local string s1, s2
+    s1 = 'ABC'
+    s2 = 'DEF'
+
+    .local pmc b_normal, b_resize_normal, b_init_size, b_resize_too_big
+    b_normal = new ['ByteBuffer']
+    b_resize_normal = new ['ByteBuffer']
+    b_init_size = new ['ByteBuffer'],4
+    b_resize_too_big = new ['ByteBuffer']
+
+    b_normal = s1
+    i = b_normal[0]
+    is(i, 65, 'simple init - no problem expected')
+    b_normal = s2
+    i = b_normal[0]
+    is(i, 68, 'reset string with new value')
+
+    b_resize_normal = s1
+    i = b_resize_normal[0]
+    is(i, 65, 'simple init - no problem expected')
+
+    # oddly also works resize to smaller values like 2,1,0
+    b_resize_normal = 3
+    b_resize_normal = s2
+    i = b_resize_normal[0]
+    is(i, 68, 'reset resized normal buff with new string')
+
+    b_init_size[0] = 65
+    b_init_size[1] = 66
+    b_init_size[2] = 67
+    # line below probably not needed but I shouldn't cause problem
+    b_init_size[3] = 0
+
+    i = b_init_size[0]
+    is(i, 65, 'simple init - no problem expected')
+
+    b_init_size = s2
+    i = b_init_size[0]
+    is(i, 68, 'reset sized buff with new string GH #835')
+
+    b_resize_too_big = s1
+    i = b_resize_too_big[0]
+    is(i, 65, 'simple init - no problem expected')
+
+    b_resize_too_big = 5
+    b_resize_too_big = s2
+    i = b_resize_too_big[0]
+    is(i, 68, 'reset resized too big buff with new string GH #835')
+.end
+
 
 # Local Variables:
 #   mode: pir

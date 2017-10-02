@@ -1,9 +1,13 @@
-# Parrot is Copyright (C) 2001-2008, Parrot Foundation.
+# Parrot is Copyright (C) 2001-2014, Parrot Foundation.
 
-=head1 DONORS
+=head1 NAME
 
-We would like to thank the following people and institutions,
-whose financial contributions help support the development of Parrot.
+DONORS
+
+=head1 DESCRIPTION
+
+We want to thank the following people and institutions, whose financial
+contributions help to support the development of Parrot.
 
 =over 4
 
@@ -30,6 +34,14 @@ L<http://activestate.com>
 =item  * BBC
 
 L<http://bbc.co.uk>
+
+=item  * cPanel
+
+L<http://cpanel.net>
+
+=item  * Erin Schoenhals
+
+Provided her old Mac Powerbook G4 for big-endian testing and native_pbc updates.
 
 =back
 

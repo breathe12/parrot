@@ -1,19 +1,25 @@
-# Copyright (C) 2005-2008, Parrot Foundation.
+# Copyright (C) 2005-2011, Parrot Foundation.
 
 =head1 NAME
 
 data_json - parse JSON, a lightweight data-interchange format.
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
 Given a valid JSON (JavaScript Object Notation) string, the compiler will
 return a sub that when called will produce the appropriate values.  For
 example:
 
     .local pmc json, code, result
+
+    load_language 'data_json'
     json   = compreg 'data_json'
+
     code   = json.'compile'('[1,2,3]')
     result = code()
+
+    load_bytecode 'dumper.pbc'
+    _dumper( result, 'array' )
 
 will create a PMC that C<does> C<array> containing the values 1, 2, and 3,
 and store it in the C<result>.
@@ -79,6 +85,7 @@ the documentation at L<http://www.json.org/>.
     .local pmc pirc, result
     pirc = compreg 'PIR'
     result = pirc(pir)
+    result = result.'first_sub_in_const_table'()
     .return (result)
 
   failed:

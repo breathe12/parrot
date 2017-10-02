@@ -1,10 +1,6 @@
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 PDD 7: Conventions and Guidelines for Parrot Source Code
-
-=head2 Version
-
-$Revision$
 
 =head2 Abstract
 
@@ -373,6 +369,15 @@ Perl source files must end with this coda:
     # End:
     # vim: expandtab shiftwidth=4:
 
+or
+
+    # Local Variables:
+    #   mode: cperl
+    #   cperl-indent-level: 4
+    #   fill-column: 78
+    # End:
+    # vim: expandtab shiftwidth=4:
+
 B<Exception>: Files with C<__END__> or C<__DATA__> blocks do not require the
 coda.  This is at least until there is some consensus as to how solve the
 issue of using editor hints in files with such blocks.
@@ -503,12 +508,13 @@ C<i> that's visible after it's used, which is confusing at best.
 
 =item Filenames
 
-Filenames must be assumed to be case-insensitive, in the sense that that you
+Filenames must be assumed to be case-insensitive, in the sense that you
 may not have two different files called F<Foo> and F<foo>. Normal source-code
 filenames should be all lower-case; filenames with upper-case letters in them
-are reserved for notice-me-first files such as F<README>, and for files which
-need some sort of pre-processing applied to them or which do the preprocessing
-- e.g. a script F<foo.SH> might read F<foo.TEMPLATE> and output F<foo.c>.
+are reserved for notice-me-first files such as F<README.pod>, and for files
+which need some sort of pre-processing applied to them or which do the
+preprocessing - e.g. a script F<foo.SH> might read F<foo.TEMPLATE> and output
+F<foo.c>.
 
 The characters making up filenames must be chosen from the ASCII set
 A-Z,a-z,0-9 plus .-_
@@ -806,11 +812,8 @@ Each comment should be of the form
 
     */
 
-This inline Pod documentation is parsed to HTML by running:
+This inline Pod documentation is transformed to HTML with:
 
-    $ perl tools/docs/write_docs.pl --delete
-
-or:
     $ make html
 
 =item Optimizations

@@ -1,4 +1,4 @@
-# Copyright (C) 2008, Parrot Foundation.
+# Copyright (C) 2008-2011, Parrot Foundation.
 
 
 =head1 NAME
@@ -140,7 +140,6 @@ package auto::opengl;
 
 use strict;
 use warnings;
-use File::Spec;
 
 use base qw(Parrot::Configure::Step);
 
@@ -159,7 +158,10 @@ sub runstep {
 
     my $without = $conf->options->get( qw| without-opengl | );
 
-    return $self->_handle_no_opengl($conf) if $without;
+    return $self->_handle_no_opengl($conf,'skipped') if $without;
+
+    # opengl depends on thunks which depend on pcre
+    return $self->_handle_no_opengl($conf) unless $conf->data->get('HAS_PCRE');
 
     my $osname = $conf->data->get('osname');
 
@@ -220,7 +222,7 @@ sub _handle_glut {
 }
 
 sub _handle_no_opengl {
-    my ($self, $conf) = @_;
+    my ($self, $conf, $msg) = @_;
 
     $conf->data->set(
         has_opengl => 0,
@@ -230,8 +232,8 @@ sub _handle_no_opengl {
         has_glut   => 0,
         HAS_GLUT   => 0,
     );
-
-    $self->set_result('no');
+    $msg = 'no' unless $msg;
+    $self->set_result($msg);
 
     return 1;
 }

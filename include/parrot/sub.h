@@ -30,7 +30,6 @@ typedef enum {
     SUB_FLAG_PF_POSTCOMP  = PObj_private7_FLAG,
 
     SUB_FLAG_PF_MASK      = SUB_FLAG_PF_ANON
-                          | SUB_FLAG_PF_MAIN
                           | SUB_FLAG_PF_LOAD
                           | SUB_FLAG_PF_IMMEDIATE
                           | SUB_FLAG_PF_POSTCOMP
@@ -87,7 +86,8 @@ typedef enum {
     SUB_COMP_FLAG_BIT_28    = SUB_FLAG(28),
     SUB_COMP_FLAG_BIT_29    = SUB_FLAG(29),
     SUB_COMP_FLAG_BIT_30    = SUB_FLAG(30),
-    SUB_COMP_FLAG_MASK      = SUB_COMP_FLAG_VTABLE | SUB_COMP_FLAG_METHOD | SUB_COMP_FLAG_NSENTRY | SUB_COMP_FLAG_PF_INIT
+    SUB_COMP_FLAG_MASK      = SUB_COMP_FLAG_VTABLE | SUB_COMP_FLAG_METHOD
+                                | SUB_COMP_FLAG_NSENTRY | SUB_COMP_FLAG_PF_INIT
 } sub_comp_flags_enum;
 #undef SUB_FLAG
 
@@ -103,11 +103,10 @@ typedef enum {
 #define Sub_comp_INIT_SET(o) Sub_comp_flag_SET(PF_INIT, o)
 #define Sub_comp_INIT_CLEAR(o) Sub_comp_flag_CLEAR(PF_INIT, o)
 
-/*
- * a flag to signal a Sub that a new Continuation should be created
- */
+#define Sub_comp_METHOD_TEST(o) Sub_comp_flag_TEST(METHOD, o)
+#define Sub_comp_METHOD_SET(o) Sub_comp_flag_SET(METHOD, o)
+#define Sub_comp_METHOD_CLEAR(o) Sub_comp_flag_CLEAR(METHOD, o)
 
-#define NEED_CONTINUATION ((PMC *)1)
 
 /*
  * maximum sub recursion depth
@@ -132,8 +131,7 @@ typedef struct Parrot_sub_arginfo {
     do { \
         const INTVAL type = (pmc)->vtable->base_type; \
         if (type == enum_class_Sub || \
-            type == enum_class_Coroutine || \
-            type == enum_class_Eval)  \
+            type == enum_class_Coroutine) \
         {\
             (sub) = PARROT_SUB((pmc)); \
         } \
@@ -185,7 +183,9 @@ int Parrot_sub_context_get_info(PARROT_INTERP,
 PARROT_EXPORT
 PARROT_CAN_RETURN_NULL
 PARROT_WARN_UNUSED_RESULT
-STRING* Parrot_sub_Context_infostr(PARROT_INTERP, ARGIN(PMC *ctx))
+STRING* Parrot_sub_Context_infostr(PARROT_INTERP,
+    ARGIN(PMC *ctx),
+    int is_top)
         __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
@@ -240,7 +240,6 @@ INTVAL Parrot_sub_get_line_from_pc(PARROT_INTERP,
     ARGIN_NULLOK(opcode_t *pc))
         __attribute__nonnull__(1);
 
-void Parrot_sub_mark_context_start(void);
 #define ASSERT_ARGS_Parrot_get_sub_pmc_from_subclass \
      __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
@@ -280,7 +279,6 @@ void Parrot_sub_mark_context_start(void);
        PARROT_ASSERT_ARG(interp))
 #define ASSERT_ARGS_Parrot_sub_get_line_from_pc __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
-#define ASSERT_ARGS_Parrot_sub_mark_context_start __attribute__unused__ int _ASSERT_ARGS_CHECK = (0)
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 /* HEADERIZER END: src/sub.c */
 

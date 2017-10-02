@@ -139,7 +139,7 @@ you have little reason to use it directly.
     .local pmc pixels_entry
 
     pixels_entry  = layout[ 'pixels' ]
-    pixels_struct = getprop '_struct', pixels_entry
+    pixels_struct = getprop pixels_entry, '_struct'
     pixels_layout = new 'OrderedHash'
 
     if bpp ==  8 goto eight_bits
@@ -594,9 +594,8 @@ surface.
 
 =head1 AUTHOR
 
-Written and maintained by chromatic, E<lt>chromatic at wgz dot orgE<gt>, with
-suggestions from Jens Rieks.  Please send patches, feedback, and suggestions to
-the Perl 6 Internals mailing list.
+Please send patches, feedback, and suggestions to the Perl 6 Internals mailing
+list.
 
 =head1 COPYRIGHT
 

@@ -1,4 +1,4 @@
-# Copyright (C) 2004-2007, Parrot Foundation.
+# Copyright (C) 2004-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -72,6 +72,25 @@ sub header {
 HEADER
 }
 
+=item C<body(@html)>
+
+Returns the html code, I<e.g.,> links, passed to it.
+
+C<@html> is a simple array to hold the html links passed to this subroutine.
+
+=cut
+
+sub body {
+    my $self = shift;
+
+    my $body;
+    foreach(@_) {
+      $body .= $_;
+    }
+
+    return $body;
+}
+
 =item C<footer($navigation, $resources)>
 
 Returns the page footer.
@@ -93,7 +112,7 @@ sub footer {
             </div> <!-- "mainbody" -->
             <div id="divider"></div>
             <div id="footer">
-	        Copyright &copy; 2002-2010, Parrot Foundation.
+	        Copyright &copy; 2002-2014, Parrot Foundation.
 FOOTER
 
     $footer .= "\n<br>Parrot version $version" if $version;

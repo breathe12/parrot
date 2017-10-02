@@ -6,10 +6,6 @@
 
 This PDD describes Parrot's numeric data types.
 
-=head2 Version
-
-$Revision$
-
 =head2 Description
 
 This PDD details the basic numeric datatypes that the Parrot core knows how to
@@ -126,7 +122,7 @@ different PMC type.}}
 =item C<i_[add|subtract|multiply|divide|floor_divide|modulus|pow]_float(INTVAL
        b)>
 
-Add/subtract/multiply/divide/modulus/exponent an integer value with the the
+Add/subtract/multiply/divide/modulus/exponent an integer value with the
 C<Integer> PMC, and set the C<Integer> to the resulting value, morphing it to
 a C<Float>.  Note that these are multidispatched.
 
@@ -288,9 +284,9 @@ similar manner to strings.
 Additionally the library provides special values which represent the result of
 otherwise undefined operations (division by zero, for instance).  Positive and
 negative infinity (C<Inf> or C<+Inf> and C<-Inf>, respectively) and both quiet
-and signalling Not a Number (C<NaN>) are available.  In general, the result of
+and signaling Not a Number (C<NaN>) are available.  In general, the result of
 an operation with at least one argument which is C<NaN> will be C<NaN>. If the
-argument is a signalling C<NaN>, an exception will also be raised.  See the
+argument is a signaling C<NaN>, an exception will also be raised.  See the
 EDA for full details.
 
 =head3 Context

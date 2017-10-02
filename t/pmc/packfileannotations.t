@@ -60,7 +60,7 @@ load_error:
     .return()
 .end
 
-# Programatically create PBC same as t/native_pbc/annotations.pbc and check unpack of it.
+# Programmatically create PBC same as t/pmc/testlib/annotations.pbc and check unpack of it.
 .sub 'test_pack_unpack'
     .local pmc pf, pfdir
     pf = new 'Packfile'
@@ -89,11 +89,13 @@ load_error:
 
     $P5 = new 'PackfileAnnotation'
     $P5.'set_name'('line')
+    $P5.'set_offset'(0)
     $P5 = 1
     anns[2] = $P5
 
     $P6 = new 'PackfileAnnotation'
     $P6.'set_name'('line')
+    $P6.'set_offset'(1)
     $P6 = 2
     anns[3] = $P6
 

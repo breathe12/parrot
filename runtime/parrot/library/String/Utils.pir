@@ -1,4 +1,4 @@
-# Copyright (C) 2007-2008, Parrot Foundation.
+# Copyright (C) 2007-2012, Parrot Foundation.
 
 .namespace ['String';'Utils']
 
@@ -16,7 +16,11 @@ String;Utils - Utilities for string processing
     $S0 = chomp($S0)      # use default record separator ("\n")
     $S0 = chomp($S0, $S1) # use custom record separator
 
-=head1 Functions
+=head1 DESCRIPTION
+
+A PIR program with utilities for string processing.
+
+=head1 FUNCTIONS
 
 =over
 
@@ -127,7 +131,7 @@ according to C<radix>.
 
   err_radix:
     $S0 = "Invalid radix: "
-    concat $S0, radix
+    $S0 = concat $S0, radix
     $P0 = new 'Exception'
     $P0 = $S0
     throw $P0
@@ -173,7 +177,7 @@ conversion.
     ($I0, $I1) = 'convert_string_to_int'(source, radix, pos)
     if $I1 == 0 goto bracketed_end
     $S0 = chr $I0
-    concat $S1, $S0
+    $S1 = concat $S1, $S0
     pos += $I1
   bracketed_end:
     $S0 = substr source, pos, 1

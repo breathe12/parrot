@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2009-2010, Parrot Foundation.
+# Copyright (C) 2009-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -17,12 +17,13 @@ Tests for mathematical operations with Inf and Nan.
 
 .sub main :main
     .include 'test_more.pir'
-    plan(37)
+    plan(42)
 
     test_basic_arith()
     test_sqrt()
     test_neg()
     test_mix_nan_inf()
+    test_is_inf_or_nan()
     test_rounding_n()
     test_rounding_i()
     test_nan_complex()
@@ -118,24 +119,59 @@ Tests for mathematical operations with Inf and Nan.
     is($N2, '-Inf', '... ceil -Inf')
 .end
 
-#pir_output_is(<<'CODE',<<OUTPUT, "TT #370 Rounding inf/nan");
+.sub test_is_inf_or_nan
+    $N0 = 'NaN'
+    $I0 = is_inf_or_nan $N0
+    ok($I0, 'is_inf_or_nan NaN')
+    $N0 = 'Inf'
+    $I0 = is_inf_or_nan $N0
+    ok($I0, 'is_inf_or_nan Inf')
+    $N0 = '-Inf'
+    $I0 = is_inf_or_nan $N0
+    ok($I0, 'is_inf_or_nan -Inf')
+    $N0 = 0
+    $I0 = is_inf_or_nan $N0
+    $I1 = not $I0
+    ok($I1, 'is_inf_or_nan 0')
+    $N0 = 123.4e5
+    $I0 = is_inf_or_nan $N0
+    $I1 = not $I0
+    ok($I1, 'is_inf_or_nan 123.4e5')
+.end
+
+#pir_output_is(<<'CODE',<<OUTPUT, "GH #422 Rounding inf/nan");
 .sub test_rounding_i
     $N0 = 'Inf'
+    push_eh nan1
     $I0 = floor $N0
-    #is($I0, 'Inf', 'floor Inf')
-    skip(1, 'rounding nan/inf gives something like -2147483648')
+    ok(0, "floor_i Inf")
+nan1:
+    ok(1, "floor_i Inf")
+    pop_eh
+
     $N0 = 'NaN'
+    push_eh nan2
     $I0 = floor $N0
-    #is($I0, 'NaN', 'floor Inf')
-    skip(1, 'rounding nan/inf gives something like -2147483648')
+    ok(0, "floor_i NaN")
+nan2:
+    ok(1, "floor_i NaN")
+    pop_eh
+
     $N0 = 'Inf'
+    push_eh nan3
     $I0 = ceil $N0
-    #is($I0, 'Inf', 'floor Inf')
-    skip(1, 'rounding nan/inf gives something like -2147483648')
+    ok(0, "ceil_i Inf")
+nan3:
+    ok(1, "ceil_i Inf")
+    pop_eh
+
     $N0 = 'NaN'
+    push_eh nan4
     $I0 = ceil $N0
-    #is($I0, 'NaN', 'floor Inf')
-    skip(1, 'rounding nan/inf gives something like -2147483648')
+    ok(0, "ceil_i NaN")
+nan4:
+    ok(1, "ceil_i NaN")
+    pop_eh
 .end
 
 .sub test_nan_complex
@@ -143,8 +179,8 @@ Tests for mathematical operations with Inf and Nan.
     $N0 = 'NaN'
     set $P1, "1 + i"
     $P1 += $N0
-    #is($P1, 'NaN', '1+i + NaN')
-    skip(1, '1+i + NaN should be NaN')
+    is($P1, 'NaN', '1+i + NaN')
+    #todo(1, '1+i + NaN should be NaN #422')
 .end
 
 .sub test_fdiv_integer_pmc_nan
@@ -153,8 +189,8 @@ Tests for mathematical operations with Inf and Nan.
     $P2 = 1
     $N0 = 'NaN'
     fdiv $P1, $P2, $N0
-    #is($P1, 'NaN', 'fdiv with Integer PMCs and NaN')
-    skip(1, 'fdiv/mod do not play nicely with PMCs and NaN')
+    is($P1, 'NaN', 'fdiv with Integer PMCs and NaN')
+    #skip(1, 'fdiv/mod do not play nicely with PMCs and NaN')
 .end
 
 .sub test_fdiv_float_pmc_nan
@@ -163,8 +199,8 @@ Tests for mathematical operations with Inf and Nan.
     $P2 = 1
     $N0 = 'NaN'
     fdiv $P1, $P2, $N0
-    #is($P1, 'NaN','fdiv with Float PMCs and NaN')
-    skip(1, 'fdiv/mod do not play nicely with PMCs and NaN')
+    is($P1, 'NaN','fdiv with Float PMCs and NaN')
+    #skip(1, 'fdiv/mod do not play nicely with PMCs and NaN')
 .end
 
 .sub test_fdiv_float_integer_pmc_nan
@@ -173,8 +209,8 @@ Tests for mathematical operations with Inf and Nan.
     $P2 = 1
     $N0 = 'NaN'
     fdiv $P1, $P2, $N0
-    #is($P1, 'NaN', 'fdiv with Float and Integer PMCs and NaN')
-    skip(1, 'fdiv/mod do not play nicely with PMCs and NaN')
+    is($P1, 'NaN', 'fdiv with Float and Integer PMCs and NaN')
+    #skip(1, 'fdiv/mod do not play nicely with PMCs and NaN')
 .end
 
 .sub test_mod_float_integer_pmc_nan
@@ -183,8 +219,8 @@ Tests for mathematical operations with Inf and Nan.
     $P2 = 1
     $N0 = 'NaN'
     mod $P1, $P2, $N0
-    #is($P1, 'NaN', 'mod with Float and Integer PMCs and NaN')
-    skip(1, 'fdiv/mod do not play nicely with PMCs and NaN')
+    is($P1, 'NaN', 'mod with Float and Integer PMCs and NaN')
+    #skip(1, 'fdiv/mod do not play nicely with PMCs and NaN')
 .end
 
 # Local Variables:

@@ -40,9 +40,12 @@ typedef enum {
 } callsignature_flags_enum;
 
 #define CALLSIGNATURE_get_FLAGS(o) (PObj_get_FLAGS(o))
-#define CALLSIGNATURE_flag_TEST(flag, o) (CALLSIGNATURE_get_FLAGS(o) & CALLSIGNATURE_ ## flag ## _FLAG)
-#define CALLSIGNATURE_flag_SET(flag, o) (CALLSIGNATURE_get_FLAGS(o) |= CALLSIGNATURE_ ## flag ## _FLAG)
-#define CALLSIGNATURE_flag_CLEAR(flag, o) (CALLSIGNATURE_get_FLAGS(o) &= ~(UINTVAL)(CALLSIGNATURE_ ## flag ## _FLAG))
+#define CALLSIGNATURE_flag_TEST(flag, o) \
+    (CALLSIGNATURE_get_FLAGS(o) & CALLSIGNATURE_ ## flag ## _FLAG)
+#define CALLSIGNATURE_flag_SET(flag, o) \
+    (CALLSIGNATURE_get_FLAGS(o) |= CALLSIGNATURE_ ## flag ## _FLAG)
+#define CALLSIGNATURE_flag_CLEAR(flag, o) \
+    (CALLSIGNATURE_get_FLAGS(o) &= ~(UINTVAL)(CALLSIGNATURE_ ## flag ## _FLAG))
 
 /* Mark if the CallSignature is for an exception handler */
 #define CALLSIGNATURE_is_exception_TEST(o)  CALLSIGNATURE_flag_TEST(is_exception, (o))
@@ -86,6 +89,12 @@ void Parrot_pcc_invoke_sub_from_c_args(PARROT_INTERP,
         __attribute__nonnull__(2)
         __attribute__nonnull__(3);
 
+PARROT_EXPORT
+PARROT_CANNOT_RETURN_NULL
+PARROT_WARN_UNUSED_RESULT
+PMC * Parrot_pcc_new_call_object(PARROT_INTERP)
+        __attribute__nonnull__(1);
+
 #define ASSERT_ARGS_Parrot_pcc_do_run_ops __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(sub_obj))
@@ -105,6 +114,8 @@ void Parrot_pcc_invoke_sub_from_c_args(PARROT_INTERP,
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(sub_obj) \
     , PARROT_ASSERT_ARG(sig))
+#define ASSERT_ARGS_Parrot_pcc_new_call_object __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp))
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 /* HEADERIZER END: src/call/pcc.c */
 
@@ -112,14 +123,27 @@ void Parrot_pcc_invoke_sub_from_c_args(PARROT_INTERP,
 /* Don't modify between HEADERIZER BEGIN / HEADERIZER END.  Your changes will be lost. */
 
 PARROT_EXPORT
+PARROT_DEPRECATED
 void free_runloop_jump_point(PARROT_INTERP)
         __attribute__nonnull__(1);
 
 PARROT_EXPORT
+PARROT_DEPRECATED
 void new_runloop_jump_point(PARROT_INTERP)
         __attribute__nonnull__(1);
 
+PARROT_EXPORT
+void Parrot_runloop_free_jump_point(PARROT_INTERP)
+        __attribute__nonnull__(1);
+
+PARROT_EXPORT
+void Parrot_runloop_new_jump_point(PARROT_INTERP)
+        __attribute__nonnull__(1);
+
 void destroy_runloop_jump_points(PARROT_INTERP)
+        __attribute__nonnull__(1);
+
+void reset_runloop_id_counter(PARROT_INTERP)
         __attribute__nonnull__(1);
 
 void runops(PARROT_INTERP, size_t offs)
@@ -129,7 +153,14 @@ void runops(PARROT_INTERP, size_t offs)
        PARROT_ASSERT_ARG(interp))
 #define ASSERT_ARGS_new_runloop_jump_point __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
+#define ASSERT_ARGS_Parrot_runloop_free_jump_point \
+     __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp))
+#define ASSERT_ARGS_Parrot_runloop_new_jump_point __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp))
 #define ASSERT_ARGS_destroy_runloop_jump_points __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp))
+#define ASSERT_ARGS_reset_runloop_id_counter __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
 #define ASSERT_ARGS_runops __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp))
@@ -215,12 +246,34 @@ void Parrot_pcc_fill_params_from_varargs(PARROT_INTERP,
         FUNC_MODIFIES(*call_object)
         FUNC_MODIFIES(*args);
 
-void Parrot_pcc_merge_signature_for_tailcall(PARROT_INTERP,
-    ARGMOD_NULLOK(PMC * parent),
-    ARGMOD_NULLOK(PMC * tailcall))
+PARROT_EXPORT
+void Parrot_pcc_set_call_from_c_args(PARROT_INTERP,
+    ARGIN(PMC *signature),
+    ARGIN(const char *sig),
+    ...)
         __attribute__nonnull__(1)
-        FUNC_MODIFIES(* parent)
-        FUNC_MODIFIES(* tailcall);
+        __attribute__nonnull__(2)
+        __attribute__nonnull__(3);
+
+PARROT_EXPORT
+void Parrot_pcc_set_call_from_varargs(PARROT_INTERP,
+    ARGIN(PMC *signature),
+    ARGIN(const char *sig),
+    ARGMOD(va_list *args))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        __attribute__nonnull__(3)
+        __attribute__nonnull__(4)
+        FUNC_MODIFIES(*args);
+
+void Parrot_pcc_merge_signature_for_tailcall(PARROT_INTERP,
+    ARGMOD(PMC *parent),
+    ARGMOD(PMC *tailcall))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2)
+        __attribute__nonnull__(3)
+        FUNC_MODIFIES(*parent)
+        FUNC_MODIFIES(*tailcall);
 
 PARROT_CAN_RETURN_NULL
 void Parrot_pcc_parse_signature_string(PARROT_INTERP,
@@ -236,8 +289,8 @@ void Parrot_pcc_parse_signature_string(PARROT_INTERP,
 
 void Parrot_pcc_split_signature_string(
     ARGIN(const char *signature),
-    ARGMOD(const char **arg_sig),
-    ARGMOD(const char **return_sig))
+    ARGOUT(const char **arg_sig),
+    ARGOUT(const char **return_sig))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2)
         __attribute__nonnull__(3)
@@ -277,9 +330,22 @@ void Parrot_pcc_split_signature_string(
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(signature) \
     , PARROT_ASSERT_ARG(args))
+#define ASSERT_ARGS_Parrot_pcc_set_call_from_c_args \
+     __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(signature) \
+    , PARROT_ASSERT_ARG(sig))
+#define ASSERT_ARGS_Parrot_pcc_set_call_from_varargs \
+     __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(signature) \
+    , PARROT_ASSERT_ARG(sig) \
+    , PARROT_ASSERT_ARG(args))
 #define ASSERT_ARGS_Parrot_pcc_merge_signature_for_tailcall \
      __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp))
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(parent) \
+    , PARROT_ASSERT_ARG(tailcall))
 #define ASSERT_ARGS_Parrot_pcc_parse_signature_string \
      __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
@@ -345,14 +411,12 @@ PARROT_EXPORT
 PARROT_PURE_FUNCTION
 PARROT_CANNOT_RETURN_NULL
 Regs_ni* Parrot_pcc_get_regs_ni(PARROT_INTERP, ARGIN(const PMC *ctx))
-        __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
 PARROT_EXPORT
 PARROT_PURE_FUNCTION
 PARROT_CANNOT_RETURN_NULL
 Regs_ps* Parrot_pcc_get_regs_ps(PARROT_INTERP, ARGIN(PMC *ctx))
-        __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
 PARROT_EXPORT
@@ -360,7 +424,6 @@ PARROT_PURE_FUNCTION
 UINTVAL Parrot_pcc_get_regs_used(PARROT_INTERP,
     ARGIN(const PMC *ctx),
     int type)
-        __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
 PARROT_EXPORT
@@ -376,34 +439,33 @@ PARROT_EXPORT
 PARROT_PURE_FUNCTION
 PARROT_CAN_RETURN_NULL
 PMC* Parrot_pcc_get_sub(PARROT_INTERP, ARGIN(const PMC *ctx))
+        __attribute__nonnull__(2);
+
+PARROT_EXPORT
+void Parrot_pcc_reuse_continuation(PARROT_INTERP,
+    ARGIN(PMC *call_context),
+    ARGIN_NULLOK(opcode_t *next))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
 PARROT_EXPORT
-PARROT_CANNOT_RETURN_NULL
+void Parrot_pcc_set_context_func(PARROT_INTERP, ARGIN(PMC *ctx))
+        __attribute__nonnull__(1)
+        __attribute__nonnull__(2);
+
+PARROT_EXPORT
 void Parrot_pcc_set_regs_ni(PARROT_INTERP,
     ARGIN(PMC *ctx),
     ARGIN(Regs_ni *bp))
-        __attribute__nonnull__(1)
         __attribute__nonnull__(2)
         __attribute__nonnull__(3);
 
 PARROT_EXPORT
-PARROT_CANNOT_RETURN_NULL
 void Parrot_pcc_set_regs_ps(PARROT_INTERP,
     ARGIN(PMC *ctx),
     ARGIN(Regs_ps *bp_ps))
-        __attribute__nonnull__(1)
         __attribute__nonnull__(2)
         __attribute__nonnull__(3);
-
-PARROT_EXPORT
-void Parrot_pcc_set_regs_used(PARROT_INTERP,
-    ARGIN(PMC *ctx),
-    int type,
-    INTVAL num)
-        __attribute__nonnull__(1)
-        __attribute__nonnull__(2);
 
 PARROT_EXPORT
 void Parrot_pcc_set_sub(PARROT_INTERP,
@@ -455,6 +517,11 @@ PARROT_CANNOT_RETURN_NULL
 PMC * Parrot_pcc_init_context(PARROT_INTERP,
     ARGIN(PMC *ctx),
     ARGIN_NULLOK(PMC *old))
+        __attribute__nonnull__(2);
+
+PARROT_WARN_UNUSED_RESULT
+PARROT_CANNOT_RETURN_NULL
+PMC * Parrot_pcc_unproxy_context(PARROT_INTERP, ARGIN(PMC * proxy))
         __attribute__nonnull__(1)
         __attribute__nonnull__(2);
 
@@ -475,31 +542,28 @@ PMC * Parrot_set_new_context(PARROT_INTERP,
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(ctx))
 #define ASSERT_ARGS_Parrot_pcc_get_regs_ni __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(ctx))
+       PARROT_ASSERT_ARG(ctx))
 #define ASSERT_ARGS_Parrot_pcc_get_regs_ps __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(ctx))
+       PARROT_ASSERT_ARG(ctx))
 #define ASSERT_ARGS_Parrot_pcc_get_regs_used __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(ctx))
+       PARROT_ASSERT_ARG(ctx))
 #define ASSERT_ARGS_Parrot_pcc_get_STRING_reg __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(ctx))
 #define ASSERT_ARGS_Parrot_pcc_get_sub __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(ctx))
+#define ASSERT_ARGS_Parrot_pcc_reuse_continuation __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(interp) \
+    , PARROT_ASSERT_ARG(call_context))
+#define ASSERT_ARGS_Parrot_pcc_set_context_func __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(ctx))
 #define ASSERT_ARGS_Parrot_pcc_set_regs_ni __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(ctx) \
+       PARROT_ASSERT_ARG(ctx) \
     , PARROT_ASSERT_ARG(bp))
 #define ASSERT_ARGS_Parrot_pcc_set_regs_ps __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(ctx) \
+       PARROT_ASSERT_ARG(ctx) \
     , PARROT_ASSERT_ARG(bp_ps))
-#define ASSERT_ARGS_Parrot_pcc_set_regs_used __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
-       PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(ctx))
 #define ASSERT_ARGS_Parrot_pcc_set_sub __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(ctx))
@@ -524,8 +588,10 @@ PMC * Parrot_set_new_context(PARROT_INTERP,
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(pmcctx))
 #define ASSERT_ARGS_Parrot_pcc_init_context __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
+       PARROT_ASSERT_ARG(ctx))
+#define ASSERT_ARGS_Parrot_pcc_unproxy_context __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
-    , PARROT_ASSERT_ARG(ctx))
+    , PARROT_ASSERT_ARG(proxy))
 #define ASSERT_ARGS_Parrot_set_new_context __attribute__unused__ int _ASSERT_ARGS_CHECK = (\
        PARROT_ASSERT_ARG(interp) \
     , PARROT_ASSERT_ARG(number_regs_used))

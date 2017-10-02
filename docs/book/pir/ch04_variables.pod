@@ -1310,11 +1310,11 @@ The C<shift>X<shift opcode> opcode extracts the next value from the iterator.
 Evaluating the iterator PMC as a boolean returns whether the iterator has
 reached the end of the aggregate:
 
-=begin PIR_FRAGMENT
+=begin PIR_FRAGMENT_INVALID
 
       if $P1 goto iter_repeat
 
-=end PIR_FRAGMENT
+=end PIR_FRAGMENT_INVALID
 
 Parrot provides predefined constants for working with iterators.
 C<.ITERATE_FROM_START> and C<.ITERATE_FROM_END> constants select whether an
@@ -1524,7 +1524,7 @@ retrieve the property value.
 
 =begin PIR_FRAGMENT
 
-  $P2 = getprop "name", $P0
+  $P2 = getprop $P0, "name"
 
 =end PIR_FRAGMENT
 
@@ -1541,7 +1541,7 @@ value of the property "eric" on C<$P0> and stores it in C<$P2>.
   $P1 = 1
 
   setprop $P0, "eric", $P1  # set a property on $P0
-  $P2 = getprop "eric", $P0 # retrieve a property from $P0
+  $P2 = getprop $P0, "eric" # retrieve a property from $P0
 
   say $P2                   # prints 1
 

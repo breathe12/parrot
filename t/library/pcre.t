@@ -1,5 +1,5 @@
 #!perl
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2015, Parrot Foundation.
 
 use strict;
 use warnings;
@@ -7,6 +7,7 @@ use lib qw( t . lib ../lib ../../lib );
 
 use Test::More;
 use Parrot::Test tests => 2;
+use Parrot::Config qw( %PConfig );
 
 =head1 NAME
 
@@ -23,13 +24,17 @@ the installed PCRE library, and matches patterns successfully.
 
 =cut
 
-# if we keep pcre, we need a config test
-my $cmd = ( $^O =~ /MSWin32/ ) ? "pcregrep --version" : "pcre-config --version";
-my $has_pcre = !Parrot::Test::run_command( $cmd, STDOUT => File::Spec->devnull ,STDERR => File::Spec->devnull, );
-my $pcre_libpath = '';
+# test if compiled with pcre and if the run-time component of pcre still works
+my $had_pcre = $PConfig{HAS_PCRE};
+my ($has_pcre, $pcre_libpath);
+if ($had_pcre) {
+    my $cmd = ( $^O =~ /MSWin32/ ) ? "pcregrep --version" : "pcre-config --version";
+    $has_pcre = !Parrot::Test::run_command( $cmd, STDOUT => File::Spec->devnull ,STDERR => File::Spec->devnull, );
+    $pcre_libpath = '';
+}
 
 # It's possible that libpcre is installed in some non-standard path...
-if ($has_pcre && ($^O !~ /MSWin32/)) {
+if ($had_pcre && $has_pcre && ($^O !~ /MSWin32/)) {
     # Extract the library path for non-windows platforms (in case it isn't in
     # the normal lookup locations)
     my $outfile = 'pcre-config.out';
@@ -37,12 +42,18 @@ if ($has_pcre && ($^O !~ /MSWin32/)) {
     my $out = Parrot::Test::slurp_file($outfile);
     unlink $outfile;
     chomp $out;
-    $pcre_libpath = "$out/lib";
+    $pcre_libpath = $^O eq 'cygwin' ? "$out/bin" : "$out/lib";
 }
 
 SKIP: {
-    skip( 'no pcre-config', Test::Builder->new()->expected_tests() )
-        unless $has_pcre;
+    my $tests = Test::Builder->new()->expected_tests();
+    skip( 'no pcre', $tests) unless $had_pcre;
+    skip( ($^O eq 'MSWin32' ? 'no pcregrep' : 'no pcre-config'), $tests)
+      unless $has_pcre;
+    skip( 'Parrot built without libffi or extra NCI thunks', $tests)
+      unless ($PConfig{HAS_EXTRA_NCI_THUNKS} || $PConfig{HAS_LIBFFI});
+    skip( 'Does not work with --ccflags=-DSTRUCT_DEBUG', $tests)
+      if $PConfig{ccflags} =~ /-DSTRUCT_DEBUG/;
 
 ## 1
 ## Check that the library can be loaded and initialized,
@@ -101,7 +112,7 @@ OUT
 
 ## 2
     my @todo;
-    @todo = ( todo => '3..5 fail on Win32' ) if $^O =~ /MSWin32/;
+    @todo = ( todo => '4..6 fail on Win32 (maybe)' ) if $^O =~ /MSWin32/;
     pir_output_is( <<"CODE", <<'OUT', 'soup to nuts', @todo );
 
 .include 'iglobals.pasm'
@@ -138,37 +149,54 @@ NOK2:
 OK2:
     say 'ok 2'
 
-
-    .local string s
     .local string pat
-
-    s= '--a--'
-    pat= 'a'
+    pat= '(a'
+    func= get_global ['PCRE'], 'compile'
 
     .local pmc code
-    .local string error
+    .local pmc error
     .local int errptr
+     error= new ['String']
+
+    func= get_global ['PCRE'], 'compile'
+    ( code, error, errptr )= func( pat, 0 )
+
+    # expecting error like 'missing )'
+    .local int error_end
+    .local int found_paren
+    error_end = elements error
+    dec error_end
+    found_paren = error.'reverse_index'(')', error_end)
+    ne found_paren, -1, OK3
+    print 'not '
+OK3:
+    say 'ok 3'
+
+    pat= 'a'
 
     func= get_global ['PCRE'], 'compile'
     ( code, error, errptr )= func( pat, 0 )
 
     .local int is_code_defined
     is_code_defined= defined code
-    if is_code_defined goto OK3
+    if is_code_defined goto OK4
     print 'not '
-OK3:
-    say 'ok 3'
+OK4:
+    say 'ok 4'
 
     .local int ok
     .local pmc result
 
+    .local string s
+    s= '--a--'
+
     func= get_global ['PCRE'], 'match'
     ( ok, result )= func( code, s, 0, 0 )
 
-    unless ok < 0 goto OK4
+    unless ok < 0 goto OK5
     print 'not '
-OK4:
-    say 'ok 4'
+OK5:
+    say 'ok 5'
 
     .local int i
     i = 0
@@ -176,10 +204,10 @@ OK4:
 
     func = get_global ['PCRE'], 'dollar'
     match = func( s, ok, result, i )
-    if 'a' == match goto OK5
+    if 'a' == match goto OK6
     print 'not '
-OK5:
-    say 'ok 5'
+OK6:
+    say 'ok 6'
 
 .end
 CODE
@@ -188,6 +216,7 @@ ok 2
 ok 3
 ok 4
 ok 5
+ok 6
 OUT
 
 }

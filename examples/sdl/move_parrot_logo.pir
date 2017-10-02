@@ -1,5 +1,5 @@
 
-=head1 TITLE
+=head1 DESCRIPTION
 
 move_parrot_logo.pir - move a Parrot logo with the SDL Parrot bindings
 
@@ -187,10 +187,6 @@ _draw:
 
 	end
 .end
-
-=head1 AUTHOR
-
-chromatic, E<lt>chromatic at wgz dot orgE<gt>.
 
 =head1 COPYRIGHT
 

@@ -1,4 +1,4 @@
-# Copyright (C) 2006-2009, Parrot Foundation.
+# Copyright (C) 2006-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -26,32 +26,26 @@ our @EXPORT_OK = qw(
 sub handle_long_options {
     my @argv = @_;
 
+    my %cl_to_longopt = (
+        'gc-debug'          => 'gc_debug',
+        'core-tests'        => 'core_tests_only',
+        'runcore-tests'     => 'runcore_tests_only',
+        'html'              => 'html',
+        'code-tests'        => 'code',
+        #'run-exec'          => 'run_exec',
+        'help'              => 'help',
+        'archive'           => 'archive',
+        'html'              => 'html',
+    );
+
     my %longopts;
-    $longopts{gc_debug} = grep { $_ eq '--gc-debug' } @argv;
-    @argv = grep { $_ ne '--gc-debug' } @argv;
+    foreach my $k (keys %cl_to_longopt) {
+        my $cl_opt = '--' . $k;
+        $longopts{$cl_to_longopt{$k}} = grep { $_ eq $cl_opt } @argv;
+        @argv = grep { $_ ne $cl_opt } @argv;
+    }
 
-    $longopts{core_tests_only} = grep { $_ eq '--core-tests' } @argv;
-    @argv = grep { $_ ne '--core-tests' } @argv;
-
-    $longopts{runcore_tests_only} = grep { $_ eq '--runcore-tests' } @argv;
-    @argv = grep { $_ ne '--runcore-tests' } @argv;
-
-    $longopts{html} = grep { $_ eq '--html' } @argv;
-    @argv = grep { $_ ne '--html' } @argv;
-
-    $longopts{code} = grep { $_ eq '--code-tests' } @argv;
-    @argv = grep { $_ ne '--code-tests' } @argv;
-
-    $longopts{run_exec} = grep { $_ eq '--run-exec' } @argv;
-    @argv = grep { $_ ne '--run-exec' } @argv;
-
-    $longopts{help} = grep { $_ eq '--help' } @argv;
-    @argv = grep { $_ ne '--help' } @argv;
-
-    $longopts{archive} = grep { $_ eq '--archive' } @argv;
-    @argv = grep { $_ ne '--archive' } @argv;
-
-    if( $longopts{archive} ) {
+    if ( $longopts{archive} ) {
         $longopts{send_to_smolder} = grep { $_ eq '--send-to-smolder' } @argv;
         @argv = grep { $_ ne '--send-to-smolder' } @argv;
     }
@@ -63,15 +57,15 @@ sub get_test_prog_args {
     my ($optsref, $gc_debug, $run_exec) = @_;
 
     my %opts = remap_runcore_opts( $optsref );
-    my $args = join(' ', map { "-$_" } keys %opts );
+    my $args = join(' ', map { "-$_" } sort keys %opts );
 
     $args =~ s/-O/-O$opts{O}/ if exists $opts{O};
-    $args =~ s/-D/-D$opts{D}/;
+    $args =~ s/-D/-D$opts{D}/ if exists $opts{D};
     $args .= ' --gc-debug'    if $gc_debug;
     ## no critic qw(Bangs::ProhibitFlagComments)
     # XXX find better way
     # for passing run_exec to Parrot::Test
-    $args .= ' --run-exec'    if $run_exec;
+    # $args .= ' --run-exec'    if $run_exec;
 
     return $args;
 }
@@ -87,9 +81,10 @@ sub remap_runcore_opts
 
     my %remap      = (
         'j' => '-runcore=fast',
-        'G' => '-runcore=gcdebug',
-        'b' => '-runcore=bounds',
         'f' => '-runcore=fast',
+        'b' => '-runcore=bounds',
+        's' => '-runcore=bounds', # =slow
+        #'G' => '-runcore=gcdebug',
         'r' => '-run-pbc',
     );
 
@@ -106,19 +101,20 @@ sub remap_runcore_opts
 }
 
 sub Usage {
+    #--run-exec ... run exec core
     print <<"EOF";
 perl t/harness [options] [testfiles]
     -w         ... warnings on
-    -b         ... run bounds checked
-    --run-exec ... run exec core
     -f         ... run fast core
     -j         ... run fast core
+    -b         ... run bounds checked
+    -s         ... run slow (bounds checked) core
     -r         ... run the compiled pbc
     -v         ... run parrot with -v : This is NOT the same as prove -v
                    All tests run with this option will probably fail
     -d         ... run debug
     -r         ... assemble to PBC run PBC
-    -O[012]    ... optimize
+    -O[012p]   ... optimize
     -D[number] ... pass debug flags to parrot interpreter
     --gc-debug
     --core-tests

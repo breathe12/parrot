@@ -87,10 +87,6 @@ TODO: Implement real tests when CallContext PMC will be migrated to use ATTRibut
     $I0 = isa $P0, 'Continuation'
     ok($I0, 'Got CallContext.current_cont')
 
-    $P0 = getattribute ctx, 'current_object'
-    $I0 = isa $P0, 'Foo'
-    ok($I0, 'Got CallContext.current_object')
-
     $P0 = getattribute ctx, 'current_namespace'
     ok($P0, 'Got CallContext.current_namespace')
     $P1 = $P0['test_inspect']
@@ -122,7 +118,7 @@ TODO: Implement real tests when CallContext PMC will be migrated to use ATTRibut
     ok($I0, 'Got CallContext.current_HLL')
 
     $P0 = getattribute ctx, 'current_hll'
-    ok($P0, 'FOO', 'Got CallContext.current_hll')
+    is($P0, 'FOO', 'Got CallContext.current_hll')
 
   done:
     pop_eh

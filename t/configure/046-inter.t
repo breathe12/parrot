@@ -1,15 +1,15 @@
 #! perl
-# Copyright (C) 2007, Parrot Foundation.
+# Copyright (C) 2007,2014, Parrot Foundation.
 # 046-inter.t
 
 use strict;
 use warnings;
-use Test::More tests => 12;
+use Test::More tests => 11;
 use Carp;
 use lib qw( lib t/configure/testlib );
 use Parrot::Configure;
 use Parrot::Configure::Options qw( process_options );
-use IO::CaptureOutput qw | capture |;
+use Parrot::Configure::Utils qw | capture |;
 use Tie::Filehandle::Preempt::Stdin;
 
 $| = 1;
@@ -45,8 +45,6 @@ ok( !ref( $confsteps[0]->object ),
     "'object' element of Parrot::Configure::Task struct is not yet a ref" );
 
 $conf->options->set(%args);
-is( $conf->options->{c}->{debugging},
-    1, "command-line option '--debugging' has been stored in object" );
 
 {
     my $rv;
@@ -56,8 +54,8 @@ is( $conf->options->{c}->{debugging},
     like(
     $stdout,
     qr/$description\.\.\./s,
-    "Got STDOUT message expected upon running $step")
-};
+    "Got STDOUT message expected upon running $step");
+}
 
 pass("Completed all tests in $0");
 
@@ -66,6 +64,7 @@ pass("Completed all tests in $0");
 =head1 NAME
 
 046-inter.t - test Parrot::Configure::_run_this_step()
+
 =head1 SYNOPSIS
 
     % prove t/configure/046-inter.t

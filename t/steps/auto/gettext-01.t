@@ -1,5 +1,5 @@
 #! perl
-# Copyright (C) 2007, Parrot Foundation.
+# Copyright (C) 2008-2013, Parrot Foundation.
 # auto/gettext-01.t
 
 use strict;
@@ -13,7 +13,7 @@ use Parrot::Configure::Step::Test;
 use Parrot::Configure::Test qw(
     test_step_constructor_and_description
 );
-use IO::CaptureOutput qw( capture );
+use Parrot::Configure::Utils qw( capture );
 
 ########## --without-gettext ##########
 
@@ -39,7 +39,7 @@ my $ret = $step->runstep($conf);
 ok( $ret, "runstep() returned true value" );
 is($conf->data->get('has_gettext'), 0,
     "Got expected value for 'has_gettext'");
-is($step->result(), q{no}, "Expected result was set");
+is($step->result(), q{skipped}, "Expected result was set");
 
 $conf->replenish($serialized);
 

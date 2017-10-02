@@ -1,11 +1,12 @@
 #!perl
-# Copyright (C) 2008-2009, Parrot Foundation.
+# Copyright (C) 2008-2014, Parrot Foundation.
 
 use strict;
 use warnings;
 use lib qw( . lib ../lib ../../lib );
 use Test::More;
 use Parrot::Test tests => 21;
+$ENV{TEST_PROG_ARGS} ||= '';
 
 pir_error_output_like( <<'CODE', <<'OUT', 'invalid get_results syntax');
 .sub main :main
@@ -15,8 +16,10 @@ CODE
 /syntax error/
 OUT
 
-pir_output_is( <<'CODE', <<'OUT', 'cannot constant fold div by 0');
-.sub fold_by_zero
+SKIP: {
+  skip "invalid -O2 test GH #1049", 1 if $ENV{TEST_PROG_ARGS} =~ /-O2/;
+  pir_output_is( <<'CODE', <<'OUT', 'cannot constant fold div by 0');
+.sub fold_by_zero :main
   push_eh ok1
     $I1 = 1/0
   pop_eh
@@ -35,8 +38,9 @@ CODE
 ok 1 - caught div_i_ic_ic exception
 ok 2 - caught div_n_nc_nc exception
 OUT
+}
 
-pir_output_is( <<'CODE', <<'OUT', 'fold symbolic constants (TT #1652)');
+pir_output_is( <<'CODE', <<'OUT', 'fold symbolic constants (GH #473)');
 .sub main :main
     .const int SECONDS_PER_MINUTE = 60
     $I0 = 30 * SECONDS_PER_MINUTE
@@ -181,7 +185,7 @@ OUT
 
 my $register = "9" x 4096;
 pir_output_is( <<"CODE", <<'OUT', 'long register numbers in PIR (TT #1025)');
-.sub main
+.sub main :main
       \$P$register = new 'Integer'
       \$P$register = 3
   say \$P$register
@@ -190,13 +194,11 @@ CODE
 3
 OUT
 
-pir_error_output_like( <<'CODE', <<'OUT', 'die in immediate, TT #629');
+pir_exit_code_is( <<'CODE', 1, 'die in immediate, TT #629');
 .sub 'foo' :immediate
   die 'no'
 .end
 CODE
-/no\ncurrent inst.*:[\d-]+\)$/
-OUT
 
 pir_error_output_like( <<'CODE', <<'OUT', 'No segfault from syntax error');
 .sub 'main'
@@ -244,7 +246,7 @@ OUT
 SKIP: {
     skip("No limit on key size", 1);
     pir_error_output_like( <<'CODE', <<'OUT', 'over long keys should not segfault (TT #641)');
-.sub main
+.sub main :main
  $P0 = new [0;0;0;0;0;0;0;0;0;0;0;0] # more than MAX_KEY_LEN.
 .end
 CODE

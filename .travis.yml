@@ -1,0 +1,65 @@
+language: perl
+install: "echo"
+sudo: false
+os:
+  - osx
+  - linux
+cache:
+  apt: true
+addons:
+  apt:
+    packages:
+    - build-essential
+    - libtool
+    - libffi-dev
+    - libicu-dev
+    - libgmp3-dev
+    - zlib1g-dev
+
+before_script:
+    # No, we are not going to run the tests for all these dependencies on every commit
+    - if [ $TRAVIS_OS_NAME == osx ]; then brew update; brew install cpanminus; brew install icu4c; export PERL5LIB=~/perl5; fi
+    # Test::Perl::Critic currently broken github.com/Perl-Critic/Perl-Critic/issues/707
+    #- cpanm -n LWP::UserAgent TAP::Harness::Archive TAP::Harness::ReportByDescription
+    - gcc --version
+    - g++ --version
+    - clang --version
+
+# Don't run Configure.pl tests, for now
+#script: "perl Configure.pl --test=build $PARROT_CONFIG_ARGS $PARROT_OPTIMIZE --cc=\"$CC\" --link=\"$CC\" --ld=\"$CC\" --ccflags='-g' ; make $PARROT_TEST"
+
+script: "perl Configure.pl $PARROT_CONFIG_ARGS $PARROT_OPTIMIZE --cc=\"$CC\" --link=\"$CC\" --ld=\"$CC\"; make $PARROT_TEST"
+
+branches:
+  only:
+    - master
+    - /smoke-me/
+
+notifications:
+  recipients:
+    - parrot-ci@lists.parrot.org
+  email:
+    on_success: change
+    on_failure: always
+  irc: "irc.parrot.org#parrot"
+
+env:
+  matrix:
+    # use --optimize for most since it's stable and runs fastest
+    - PARROT_CONFIG_ARGS="" PARROT_OPTIMIZE="--optimize"  PARROT_TEST="test"  CC="clang"
+    - PARROT_CONFIG_ARGS="--without-gettext --without-gmp --without-libffi --without-extra-nci-thunks --without-opengl --without-readline --without-pcre --without-zlib --without-threads --without-icu" PARROT_OPTIMIZE="" PARROT_TEST="test" CC="clang"
+    #- PARROT_CONFIG_ARGS="" PARROT_OPTIMIZE="--optimize"  PARROT_TEST="test"  CC="gcc"
+    #- PARROT_CONFIG_ARGS="--without-gettext --without-gmp --without-libffi --without-extra-nci-thunks --without-opengl --without-readline --without-pcre --without-zlib --without-threads --without-icu" PARROT_OPTIMIZE="" PARROT_TEST="smoke" CC="gcc"
+    - PARROT_CONFIG_ARGS="" PARROT_OPTIMIZE="--optimize"  PARROT_TEST="test"  CC="g++"
+    - PARROT_CONFIG_ARGS="" PARROT_OPTIMIZE="--optimize"  PARROT_TEST="testO2" CC="clang"
+    # Use clang to run our coding standard and manifest tests, because it is the fastest
+    # These will cause Travis to report a build failure when somebody breaks the manifest
+    # tests by forgetting to add files to our manifest, or when they break our coding standards.
+    # The reason we do not use smolder_fulltest is because it will intermittently trigger
+    # the Travis CI time-out of 15 minutes.
+    - PARROT_CONFIG_ARGS="" PARROT_OPTIMIZE="--optimize"  PARROT_TEST="codingstd_tests" CC="clang"
+    - PARROT_CONFIG_ARGS="" PARROT_OPTIMIZE="--optimize"  PARROT_TEST="manifest_tests"  CC="clang"
+
+matrix:
+  allow_failures:
+    - env: PARROT_CONFIG_ARGS="" PARROT_OPTIMIZE="--optimize"  PARROT_TEST="codingstd_tests" CC="clang"

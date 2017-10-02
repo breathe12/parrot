@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -19,7 +19,7 @@ out-of-bounds test. Checks INT and PMC keys.
 .sub main :main
     .include 'fp_equality.pasm'
     .include 'test_more.pir'
-    plan(30)
+    plan(36)
 
     array_size_tests()
     element_set_tests()
@@ -31,6 +31,25 @@ out-of-bounds test. Checks INT and PMC keys.
     get_iter_test()
     test_new_style_init()
     test_invalid_init_tt1509()
+    test_get_string()
+    test_sort()
+.end
+
+.sub test_sort
+    $P0 = new ['FixedFloatArray'], 4
+    set $P0[0],10.0
+    set $P0[1],5.0
+    set $P0[2],3.0
+    set $P0[3],1.0
+    $P0.'sort'()
+    $I0 = $P0[0]
+    is($I0,1,'sort works')
+    $I1 = $P0[1]
+    is($I1,3,'sort works')
+    $I2 = $P0[2]
+    is($I2,5,'sort works')
+    $I3 = $P0[3]
+    is($I3,10,'sort works')
 .end
 
 .sub array_size_tests
@@ -259,17 +278,28 @@ loop:
 .end
 
 .sub test_invalid_init_tt1509
-    throws_substring(<<'CODE', 'FixedFloatArray: Cannot set array size to a negative number (-10)', 'New style init does not dump core for negative array lengths')
-    .sub main
+    throws_substring(<<'CODE', 'illegal argument', 'New style init does not dump core for negative array lengths')
+    .sub main :main
         $P0 = new ['FixedFloatArray'], -10
     .end
 CODE
 
-    throws_substring(<<'CODE', 'FixedFloatArray: Cannot set array size to a negative number (-10)', 'New style init (key constant) does not dump core for negative array lengths')
-    .sub main
+    throws_substring(<<'CODE', 'illegal argument', 'New style init (key constant) does not dump core for negative array lengths')
+    .sub main :main
         $P0 = new 'FixedFloatArray', -10
     .end
 CODE
+.end
+
+.sub test_get_string
+    $P0 = new 'FixedFloatArray', 3
+    $P0[0] = -1.5
+    $P0[1] = 0
+    $P0[2] = 3.14
+    $S0 = $P0
+    is($S0, '[ -1.5, 0, 3.14 ]', 'converts to string')
+    $S0 = get_repr $P0
+    is($S0, '[ -1.5, 0, 3.14 ]', 'has string representation')
 .end
 
 # Local Variables:

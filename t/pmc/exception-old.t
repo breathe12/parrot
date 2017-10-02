@@ -1,5 +1,5 @@
 #! perl
-# Copyright (C) 2001-2008, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 use strict;
 use warnings;
@@ -21,8 +21,10 @@ Tests C<Exception> and C<ExceptionHandler> PMCs.
 
 =cut
 
+$ENV{TEST_PROG_ARGS} ||= '';
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "get_results" );
+.pcc_sub :main main:
     print "main\n"
     push_eh handler
     new P1, ['Exception']
@@ -90,6 +92,7 @@ Message
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "get_results - be sure registers are ok" );
+.pcc_sub :main main:
 # see also #38459
     print "main\n"
     new P0, ['Integer']
@@ -144,6 +147,7 @@ just pining
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "push_eh - throw - message" );
+.pcc_sub :main main:
     print "main\n"
     push_eh _handler
 
@@ -168,6 +172,7 @@ something happened
 OUTPUT
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "throw - no handler" );
+.pcc_sub :main main:
     new P0, ['Exception']
     new P20, ['String']
     set P20, "something happened"
@@ -180,6 +185,7 @@ CODE
 OUTPUT
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "throw - no handler, no message" );
+.pcc_sub :main main:
     push_eh _handler
     new P0, ['Exception']
     pop_eh
@@ -193,6 +199,7 @@ CODE
 OUTPUT
 
 pasm_error_output_like( <<'CODE', <<'OUTPUT', "throw - no handler, no message" );
+.pcc_sub :main main:
     new P0, ['Exception']
     throw P0
     print "not reached\n"
@@ -202,6 +209,7 @@ CODE
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "2 exception handlers" );
+.pcc_sub :main main:
     print "main\n"
     push_eh _handler1
     push_eh _handler2
@@ -234,6 +242,7 @@ something happened
 OUTPUT
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "2 exception handlers, throw next" );
+.pcc_sub :main main:
     print "main\n"
     push_eh _handler1
     push_eh _handler2
@@ -270,6 +279,7 @@ OUTPUT
 
 
 pasm_output_is( <<'CODE', <<OUT, "die, error, severity" );
+.pcc_sub :main main:
     push_eh _handler
     die 3, 100
     print "not reached\n"
@@ -289,6 +299,7 @@ severity 3
 OUT
 
 pasm_error_output_like( <<'CODE', <<OUT, "die - no handler" );
+.pcc_sub :main main:
     die 3, 100
     print "not reached\n"
     end
@@ -300,6 +311,7 @@ CODE
 OUT
 
 pasm_output_is( <<'CODE', '', "exit exception" );
+.pcc_sub :main main:
     noop
     exit 0
     print "not reached\n"
@@ -307,6 +319,7 @@ pasm_output_is( <<'CODE', '', "exit exception" );
 CODE
 
 pasm_output_is( <<'CODE', <<'OUTPUT', "push_eh - throw" );
+.pcc_sub :main main:
     print "main\n"
     push_eh handler
     print "ok\n"
@@ -425,6 +438,10 @@ pir_output_is(<<'CODE', <<'OUTPUT', "taking a continuation promotes RetCs");
 ## parrot with "-D80" shows clearly that the "test" context was being recycled
 ## prematurely.  For some reason, it is necessary to signal the error in order
 ## to expose the bug.
+## See also -O2 t/pmc/exception-old_19.pir regression [GH #1044]
+## cont = test() contains a push_eh, and the subsequent pop_eh at cont() changes
+## the value of the constant redux from 0 back to 1. So constant propagation for
+## redux=0 cannot delete "if redux goto done" and the done branch.
 .sub main :main
     .local int redux
     .local pmc cont

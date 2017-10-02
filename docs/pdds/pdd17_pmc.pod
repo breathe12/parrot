@@ -7,10 +7,6 @@
 This PDD describes the internal structure and behavior of the Polymorphic
 Container (PMC) data type.
 
-=head2 Version
-
-$Revision$
-
 =head2 Description
 
 PMCs implement all internal data types more complex than a simple integer,
@@ -434,6 +430,16 @@ null value passed as the initializer parameter is allowed.
 NOTE: It is strongly suggested that init_pmc(PMCNULL) be equivalent to
 init(), though there will of necessity be exceptions.
 
+=item init_init
+
+  void init_int(INTERP, PMC *self, INTVAL initializer)
+
+Alternative entry point called when a PMC is first instantiated.  Accepts an
+integer parameter used to initialize the given object.  Interpretation of the
+integer initializer is left open, each PMC is free to choose its own
+implementation.  This is very useful for PMCs that require an integer size
+parameter and is used as such in FixedPMCArray and related.
+
 =item instantiate
 
   PMC* instantiate(INTERP, PMC *self, PMC *init)
@@ -732,7 +738,7 @@ be made.
 Set the boolean state of the PMC to TRUE if the native integer value passed in
 is TRUE, or FALSE if the value is FALSE. The definition of truth is left open
 to the particular PMC. For a scalar, it may be as simple as setting false when
-a 0 value is passed in, and seting true when any other value is passed in.
+a 0 value is passed in, and setting true when any other value is passed in.
 
 =item assign_pmc
 
@@ -1356,8 +1362,7 @@ modifying the value of I<self>.
 
 =item substr
 
-  void substr(INTERP, PMC *self, INTVAL offset, INTVAL length, PMC *dest)
-  STRING* substr_str(INTERP, PMC *self, INTVAL offset, INTVAL length)
+  STRING* substr(INTERP, PMC *self, INTVAL offset, INTVAL length)
 
 Extracts the string starting at I<offset> with size I<length> and return
 it as a PMC in I<dest> or as a string return value.

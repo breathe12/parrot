@@ -1,5 +1,5 @@
 #!perl
-# Copyright (C) 2005-2010, Parrot Foundation.
+# Copyright (C) 2005-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -19,8 +19,9 @@ use strict;
 use warnings;
 use lib qw( lib . ../lib ../../lib );
 
-use Test::More tests => 30;
+use Test::More;
 use Parrot::Config;
+use Parrot::Test tests => 40;
 use File::Temp 0.13 qw/tempfile/;
 use File::Spec;
 
@@ -59,48 +60,88 @@ say "first"
 .end
 
 END_PIR
+Parrot::Test::convert_line_endings($expected_preprocesses_pir);
 is( `"$PARROT" -E "$first_pir_file" $redir`, $expected_preprocesses_pir, 'option -E' );
 is( `"$PARROT" --pre-process-only "$first_pir_file" $redir`,
-    $expected_preprocesses_pir, 'option --pre-process-only' );
+$expected_preprocesses_pir, 'option --pre-process-only' );
 
-# Test the trace option
-is( `"$PARROT" -t "$first_pir_file" $redir`, "first\n", 'option -t' );
-is( `"$PARROT" --trace "$first_pir_file" $redir`, "first\n", 'option --trace' );
-is( `"$PARROT" -t "$first_pir_file" "$second_pir_file" $redir`, "second\n",
-    'option -t with flags' );
-is( `"$PARROT" --trace "$first_pir_file" "$second_pir_file" $redir`,
-    "second\n", 'option --trace with flags' );
+# Test the trace option. Broken with fprintf(stderr,) optimizations for less GC stress while tracing
+TODO: {
+    local $TODO = 'Broken stdout redirection test with fprintf(stderr,) #1124';
+    is( `"$PARROT" -t "$first_pir_file" $redir`, "first\n", 'option -t' );
+    is( `"$PARROT" --trace "$first_pir_file" $redir`, "first\n", 'option --trace' );
+    is( `"$PARROT" -t "$first_pir_file" "$second_pir_file" $redir`, "second\n",
+        'option -t with flags' );
+    is( `"$PARROT" --trace "$first_pir_file" "$second_pir_file" $redir`,
+        "second\n", 'option --trace with flags' );
+}
 
 ## test the -R & --runcore options
 {
-    my $cmd;
+my $cmd;
 
-    ## this test assumes these cores work on all platforms (a safe assumption)
-    for my $val (qw/ slow fast bounds trace /) {
-        for my $opt ( '-R ', '--runcore ', '--runcore=' ) {
-            $cmd = qq{"$PARROT" $opt$val "$second_pir_file" $redir};
-            is( qx{$cmd}, "second\n", "<$opt$val> option)" ) or diag $cmd;
-        }
+## this test assumes these cores work on all platforms (a safe assumption)
+for my $val (qw/ slow fast bounds trace /) {
+    for my $opt ( '-R ', '--runcore ', '--runcore=' ) {
+        $cmd = qq{"$PARROT" $opt$val "$second_pir_file" $redir};
+        is( qx{$cmd}, "second\n", "<$opt$val> option)" ) or diag $cmd;
     }
-
-    $cmd = qq{"$PARROT" -D 8 -R slow "$second_pir_file" $redir};
-    is( qx{$cmd}, "second\n", "-r option <$cmd>" );
-
-    $cmd = qq{"$PARROT" -D 8 -R slow "$second_pir_file" 2>&1};
-    like( qx{$cmd}, qr/Parrot VM: slow core/, "-r option <$cmd>" );
 }
 
-## TT #1150 test remaining options
+$cmd = qq{"$PARROT" -D 8 -R slow "$second_pir_file" $redir};
+is( qx{$cmd}, "second\n", "-r option <$cmd>" );
+
+$cmd = qq{"$PARROT" -D 8 -R slow "$second_pir_file" 2>&1};
+like( qx{$cmd}, qr/Parrot VM: slow core/, "-r option <$cmd>" );
+}
+
+## GH #346 test remaining options
 
 # Test --runtime-prefix
 like( qx{$PARROT --runtime-prefix}, qr/^.+$/, "--runtime-prefix" );
 
 # TT #1797: check for warning error and mask off "did it crash?" bits
-my $output = qx{$PARROT --gc-threshold 2>&1 };
+my $output = qx{$PARROT --gc-dynamic-threshold 2>&1 };
 my $exit   = $? & 127;
-like( $output, qr/--gc-threshold needs an argument/,
-                 '--gc-threshold needs argument warning' );
+like( $output, qr/--gc-dynamic-threshold needs an argument/,
+             '--gc-dynamic-threshold needs argument warning' );
 is( $exit, 0, '... and should not crash' );
+
+# GC nursery-size check for warning error and mask off "did it crash?" bits
+$output = qx{$PARROT --gc-nursery-size 2>&1 };
+$exit   = $? & 127;
+like( $output, qr/--gc-nursery-size needs an argument/,
+                 '--gc-nursery-size needs argument warning' );
+is( $exit, 0, '... and should not crash' );
+
+$output = qx{$PARROT --gc-nursery-size=51 2>&1 };
+$exit   = $? & 127;
+like( $output, qr/maximum GC nursery size is 50%/,
+                 '--gc-nursery-size max warning' );
+is( $exit, 0, '... and should not crash' );
+
+
+sub numthreads_tests {
+    my $output = qx{$PARROT 2>&1 --numthreads 0};
+    like($output, qr/minimum number of threads is 2/, '--numthreads 0 gives an error');
+
+    $output = qx{$PARROT 2>&1 --numthreads 1};
+    like($output, qr/minimum number of threads is 2/, '--numthreads 1 gives an error');
+
+    $output = qx{$PARROT 2>&1 --numthreads -2};
+    like($output, qr/invalid number of threads/, '--numthreads -2 gives an error');
+
+    $output = qx{$PARROT 2>&1 --numthreads 1e9};
+    like($output, qr/invalid number of threads/, '--numthreads 1e9 gives an error');
+
+    $output = qx{$PARROT 2>&1 --numthreads 2 $first_pir_file};
+    like($output, qr/first/, '--numthreads 2 works');
+}
+
+numthreads_tests();
+
+# Test --leak-test. See issue GH #765
+is( qx{$PARROT --leak-test "$first_pir_file"}, "first\n", '--leak-test' );
 
 # clean up temporary files
 unlink $first_pir_file;

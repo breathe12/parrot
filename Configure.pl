@@ -1,6 +1,6 @@
 #! perl
 
-# Copyright (C) 2001-2009, Parrot Foundation.
+# Copyright (C) 2001-2017, Parrot Foundation.
 
 use 5.008;
 use strict;
@@ -17,8 +17,8 @@ use Parrot::Configure::Options::Test::Prepare qw(
 use Parrot::Configure::Messages qw(
     print_introduction
     print_conclusion
+    warn_experimental
 );
-use Parrot::Revision;
 
 $| = 1;    # $OUTPUT_AUTOFLUSH = 1;
 
@@ -42,6 +42,15 @@ my ($args, $steps_list_ref) = process_options(
 );
 exit(1) unless defined $args;
 
+# preload all steps for debugging because some Windows systems cannot
+# do "b postpone stepname"
+if (defined &DB::DB) {
+    for my $step_name (@{ $steps_list_ref } ) {
+        eval "use $step_name;"; ## no critic (BuiltinFunctions::ProhibitStringyEval)
+        die $@ if $@;
+    }
+}
+
 my $opttest = Parrot::Configure::Options::Test->new($args);
 
 # configuration tests will only be run if you requested them
@@ -51,10 +60,8 @@ $opttest->run_configure_tests( get_preconfiguration_tests() );
 my $parrot_version = $Parrot::Configure::Options::Conf::parrot_version;
 
 # from Parrot::Configure::Messages
-print_introduction($parrot_version);
-
-# Update revision number if needed
-Parrot::Revision::update();
+print_introduction($parrot_version)
+    unless $args->{silent};
 
 my $conf = Parrot::Configure->new();
 
@@ -63,12 +70,27 @@ $conf->add_steps( @{ $steps_list_ref } );
 # from Parrot::Configure::Data
 $conf->options->set( %{$args} );
 # save the command-line for make reconfig
-$conf->data->set(configure_args => @ARGV ? '"'.join("\" \"", map {qq($_)} @ARGV).'"'
-                                         : '');
+$conf->data->set(configure_args => @ARGV
+    ? '"'.join("\" \"", map {qq($_)} @ARGV).'"'
+    : '');
+warn_experimental($conf, $args)
+    if !$args->{silent} and ($args->{intval} or $args->{floatval} or $args->{gc});
 
-# Log files created by Configure.pl in MANIFEST.configure.generated
+# Log files created by Configure.pl in MANIFEST.generated
 $conf->{active_configuration} = 1;
-unlink 'MANIFEST.configure.generated';
+
+# Create a fresh MANIFEST for make install
+unlink 'MANIFEST.generated';
+if (do './lib/Parrot/Config/Generated.pm') {
+    my $make = $Parrot::Config::Generated::PConfig{make};
+    if ($make and -f 'Makefile') {
+        $Parrot::Config::Generated::PConfig{gmake_version}
+          ? system ($make, '-s', 'clean') : system ($make, 'clean');
+    }
+}
+elsif (-f 'Makefile' and $^O =~ /(linux|darwin)/) {
+    system ('make', '-s', 'clean');
+}
 
 # Run the actual steps from Parrot::Configure
 $conf->runsteps or exit(1);
@@ -79,7 +101,7 @@ $opttest->run_build_tests( get_postconfiguration_tests() );
 
 my $make = $conf->data->get('make');
 # from Parrot::Configure::Messages
-( print_conclusion( $conf, $make ) ) ? exit 0 : exit 1;
+( print_conclusion( $conf, $make, $args ) ) ? exit 0 : exit 1;
 
 ################### DOCUMENTATION ###################
 
@@ -196,6 +218,11 @@ run the tests described in C<--test=build>.
 Store the results of each configuration step in a Storable F<.sto> file on
 disk, for later analysis by F<Parrot::Configure::Trace> methods.
 
+=item C<--coveragedir>
+
+In preparation for calling C<make cover> to perform coverage analysis,
+provide a user-specified directory for top level of HTML output.
+
 =item Operating system-specific configuration options
 
 =over 4
@@ -222,19 +249,35 @@ On Darwin, do not probe for Macports libraries.
 
 =item C<--debugging=0>
 
-Debugging is turned on by default. Use this to disable it.
+Debugging is turned on by default. Use this to disable it, or to set a
+different debugging flag than C<-g>, such as C<--debugging=-g3>.
 
-=item C<--parrot_is_shared>
+=item C<--disable-shared>
 
-Link parrot dynamically.
+=item C<--parrot_is_shared> I<DEPRECATED>
+
+Link libparrot static or dynamically.
+
+=item C<--enable-static>
+
+Link libparrot static.
+
+=item C<--disable-static>
+
+Do not compile a static libparrot.
 
 =item C<--m=32>
 
-Create a 32-bit executable on 64-architectures like x86_64. This
+Create 32-bit executables on 64-architectures like x86_64. This
 option appends C<-m32> to compiler and linker programs and does
 C<s/lib64/lib/g> on link flags.
 
 This option is experimental. See F<config/init/defaults.pm> for more.
+
+=item C<--m=64>
+
+Create 64-bit executables on architectures which default to 32-bit but can do 64-bit,
+like gcc on mips64 and ppc64. This option appends C<-mabi=64> to gcc.
 
 =item C<--profile>
 
@@ -258,7 +301,11 @@ Tell Configure that the compiler supports C<inline>.
 
 =item C<--cc=(compiler)>
 
-Specify which compiler to use.
+Specify which C compiler to use.
+
+=item C<--cxx=(compiler)>
+
+Specify which C++ compiler to use.
 
 =item C<--ccflags=(flags)>
 
@@ -267,10 +314,6 @@ Use the given compiler flags.
 =item C<--ccwarn=(flags)>
 
 Use the given compiler warning flags.
-
-=item C<--cxx=(compiler)>
-
-Specify which C++ compiler to use (for ICU).
 
 =item C<--libs=(libs)>
 
@@ -300,13 +343,15 @@ Specify which loader to use for shared libraries.
 
 Use the given loader flags for shared libraries
 
+=item C<--enable-rpath>
+
 =item C<--disable-rpath>
 
-Specify that rpath should not be included in linking flags. With this
+If rpath should be included in the linking flags. With this
 configuration option, you must append the library build directory
 (usually blib/lib) to the LD_LIBRARY_PATH environment variable (or your
-platform equivalent). This option is primarily used for building Linux
-packages.
+platform equivalent). C<--disable-rpath> is primarily used for building Linux
+packages, to be prefix independent.
 
 =item C<--lex=(lexer)>
 
@@ -337,30 +382,22 @@ ops. Useful when debugging internals.
 =item C<--intval=(type)>
 
 Use the given type for C<INTVAL>.
+This option is experimental. See https://github.com/parrot/parrot/issues/1145 for more.
 
 =item C<--floatval=(type)>
 
 Use the given type for C<FLOATVAL>.
+This option is experimental. See https://github.com/parrot/parrot/issues/828 for more.
 
 =item C<--opcode=(type)>
 
 Use the given type for opcodes.
+This option is experimental.
 
 =item C<--ops=(files)>
 
 Use the given ops files.
-
-=item C<--jitcapable>
-
-Use JIT system.
-
-=item C<--buildframes>
-
-Dynamically build NCI call frames.
-
-=item C<--execcapable>
-
-Use JIT to emit a native executable.
+This option is experimental.
 
 =back
 
@@ -407,6 +444,11 @@ E.g.
 Use this option if you want imcc's parser and lexer files to be generated.
 Needs a working parser and lexer.
 
+=item C<--with-llvm>
+
+Use this option if you have a recent version of LLVM installed and wish Parrot
+to link to it.
+
 =back
 
 =head1 CONFIGURATION-FILE INTERFACE
@@ -452,12 +494,18 @@ for the purpose of setting environmental variables used in options, like this:
     CX="/usr/bin/g++"
     /usr/local/bin/perl Configure.pl \
         --cc="$CC" \
-        --cxx="$CX" \
         --link="$CX" \
         --ld="$CX"
 
 ... you would now place the assignments to C<CC> and C<CX> in the
 I<=variables> section of the configuration file (as above).
+
+In addition, should you wish to use an option whose value contains whitespace
+and would, if presented on the command-line, require quoting, you may
+assign that string to a variable and then use the variable in the C<general>
+section below.
+
+    LONGLONG=long long
 
 =back
 
@@ -479,13 +527,20 @@ Parrot configuration options.  Entries in this section must be either
 I<option=value> pairs or be options which will be assigned a true value.
 
     cc=$CC
-    cxx=$CX
     link=$CX
     ld=/usr/bin/g++
     verbose
 
 Note that when the value is a variable defined in the I<=variables> section,
 it must be preceded by a C<$> sign.
+
+    intval=$LONGLONG
+
+Alternatively, if assignment of a value to an option on the command-line would
+require quoting due to the presence of whitespace in the value, you may assign
+it to a value in the I<=general> section by double-quoting the value.
+
+    intval="long long"
 
 =item *
 
@@ -548,7 +603,7 @@ for example, wish to designate only a few steps for verbose output:
 
     ...
     init::hints verbose-step
-    init::headers
+    ...
     inter::progs fatal-step
     ...
     auto::gcc verbose-step
@@ -585,7 +640,6 @@ configuration file.
     =general
 
     cc=$CC
-    cxx=$CX
     link=$CX
     ld=/usr/bin/g++
 
@@ -595,7 +649,6 @@ configuration file.
     init::defaults
     init::install
     init::hints verbose-step
-    init::headers
     inter::progs
     inter::make
     inter::lex
@@ -622,7 +675,6 @@ configuration file.
     auto::isreg
     auto::arch
     auto::jit
-    auto::frames
     auto::cpu
     auto::inline
     auto::gc
@@ -638,13 +690,12 @@ configuration file.
     auto::snprintf
     # auto::perldoc
     auto::ctags
-    auto::revision
     auto::icu
+    auto::platform
     gen::config_h
     gen::core_pmcs
     gen::opengl
     gen::makefiles
-    gen::platform
     gen::config_pm
 
     =cut

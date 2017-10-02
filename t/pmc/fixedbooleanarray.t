@@ -1,5 +1,5 @@
 #!./parrot
-# Copyright (C) 2001-2010, Parrot Foundation.
+# Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -19,7 +19,7 @@ out-of-bounds test. Checks INT and PMC keys.
 .sub 'test' :main
     .include 'test_more.pir'
 
-    plan(41)
+    plan(42)
 
     setting_array_size()
     resizing_not_allowed()
@@ -38,6 +38,7 @@ out-of-bounds test. Checks INT and PMC keys.
     fill()
     test_new_style_init()
     test_invalid_init_tt1509()
+    test_get_string()
 .end
 
 .sub 'setting_array_size'
@@ -348,17 +349,24 @@ out-of-bounds test. Checks INT and PMC keys.
 .end
 
 .sub test_invalid_init_tt1509
-    throws_substring(<<'CODE', 'FixedBooleanArray: Cannot set array size to a negative number (-10)', 'New style init does not dump core for negative array lengths')
-    .sub main
+    throws_substring(<<'CODE', 'illegal argument', 'New style init does not dump core for negative array lengths')
+    .sub main :main
         $P0 = new ['FixedBooleanArray'], -10
     .end
 CODE
 
-    throws_substring(<<'CODE', 'FixedBooleanArray: Cannot set array size to a negative number (-10)', 'New style init (key constant) does not dump core for negative array lengths')
-    .sub main
+    throws_substring(<<'CODE', 'illegal argument', 'New style init (key constant) does not dump core for negative array lengths')
+    .sub main :main
         $P0 = new 'FixedBooleanArray', -10
     .end
 CODE
+.end
+
+.sub test_get_string
+    $P0 = new 'FixedBooleanArray', 2
+    $P0[1] = 1
+    $S0 = $P0
+    is($S0, '01', 'converts to string')
 .end
 
 # Local Variables:

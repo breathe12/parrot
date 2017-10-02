@@ -1,5 +1,5 @@
 #!perl
-# Copyright (C) 2001-2009, Parrot Foundation.
+# Copyright (C) 2001-2009,2014, Parrot Foundation.
 
 use strict;
 use warnings;
@@ -7,7 +7,7 @@ use lib qw( . lib ../lib ../../lib );
 
 use Test::More;
 use Parrot::Config;
-use Parrot::Test tests => 15;
+use Parrot::Test tests => 17;
 
 pir_output_is( <<'CODE', <<'OUT', "if/unless" );
 .sub test :main
@@ -169,44 +169,25 @@ CODE
 ok
 OUT
 
-pir_error_output_like( <<'CODE', <<'OUTPUT', 'new with a native type, no string constant', todo => 'TT #1323 not done yet' );
+# [GH #335]
+pir_error_output_like( <<'CODE', <<'OUTPUT', 'new with unknown sub_label_op, no string constant');
 .sub test :main
-        $P1 = new INTVAL
+    $P1 = new INTVAL
     print "never\n"
     end
 .end
 CODE
-/error:imcc:syntax error, unexpected IDENTIFIER \('INTVAL'\)/
+/error:imcc:The opcode 'new_p_ic' \(new<2>\) was not found/
 OUTPUT
 
 pir_error_output_like( <<'CODE', <<'OUTPUT', "new with an unknown class" );
 .sub test :main
-        $P1 = new 'INTVAL'
+    $P1 = new 'INTVAL'
     print "never\n"
     end
 .end
 CODE
 /Class 'INTVAL' not found/
-OUTPUT
-
-pir_output_is( <<'CODE', <<'OUTPUT', "setline w comment" );
-.sub test :main
-    setline 1    # comment
-    print "ok\n"
-    end
-.end
-CODE
-ok
-OUTPUT
-
-pir_output_is( <<'CODE', <<'OUTPUT', "setfile w comment" );
-.sub test :main
-    setfile "foo"    # comment
-    print "ok\n"
-    end
-.end
-CODE
-ok
 OUTPUT
 
 pir_error_output_like( <<'CODE', <<'OUT', "undefined ident" );
@@ -250,6 +231,87 @@ pir_error_output_like( <<'CODE', <<'OUT', 'lexical redeclared in sub');
 .end
 CODE
 /Multiple declarations of lexical 'foo'/
+OUT
+
+# GH #1095
+pir_output_is( <<'CODE', <<'OUT', 'legal quoted .lex names');
+.sub 'main' :main
+    .lex 'bar\o', $P0        # ok, parsed as "bar\\o"
+    $P1 = box 'ok 1'
+    store_lex 'bar\o', $P1   # ok, parsed as "bar\\o"
+    $P2 = find_lex 'bar\o'
+    say $P2
+
+    .lex "foo\\o", $P3       # did parse as 'foo\\o'
+    $P1 = box 'ok 2'
+    store_lex "foo\\o", $P1  # was Error: Lexical 'foo\o' not found
+    $P2 = find_lex "foo\\o"
+    say $P2
+.end
+CODE
+ok 1
+ok 2
+OUT
+
+pir_error_output_like( <<'CODE', <<'OUT', 'illegal quoted .lex names');
+.sub 'main' :main
+    .lex "foo\o", $P4        # ok, parsed as "foo\o" (set_lexical)
+    $P1 = box 'ok 3'
+    store_lex "foo\o", $P1   # old imcc compressed that to "fooo", now error
+    $P2 = find_lex "foo\o"   # ditto
+    say $P2
+.end
+CODE
+/Illegal escape sequence \\o in 'foo\\o'/
+OUT
+
+pir_output_is( <<'CODE', <<'OUT', 'legal quote with global names');
+.sub 'main' :main
+    $S0 = 'bar\o'
+    $P1 = box 'ok 1'
+    set_global $S0, $P1
+    $P2 = get_global 'bar\o'
+    say $P2
+
+    $S1 = "foo\\o"
+    $P1 = box 'ok 2'
+    set_global "foo\\o", $P1   # ok, parsed as 'foo\o'
+    $P2 = get_global "foo\\o"
+    say $P2
+.end
+CODE
+ok 1
+ok 2
+OUT
+
+pir_error_output_like( <<'CODE', <<'OUT', 'illegal quoted global names');
+.sub 'main' :main
+    $S0 = 'bar\o'
+    $P1 = box 'ok 1'
+    set_global $S0, $P1
+    $P2 = get_global 'bar\o'
+    say $P2
+
+    $S1 = "foo\\o"
+    $P1 = box 'ok 2'
+    set_global "foo\\o", $P1   # ok, parsed as "foo\\o"
+    $P2 = get_global "foo\\o"
+    say $P2
+
+    $S2 = "foo\o"
+    $P1 = box 'ok 3'
+    $S3 = "fooo"
+    $P2 = box 'ok 4'
+    set_global "foo\o", $P1    # now illegal, before "fooo"
+    set_global "fooo",  $P2
+    $P3 = get_global "foo\o"
+    say $P3
+
+    $P3 = get_global "fooo"
+    say $P3
+.end
+CODE
+/Illegal escape sequence \\o in 'foo\\o'/
 OUT
 
 # Local Variables:

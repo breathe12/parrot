@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2001-2009, Parrot Foundation.
+Copyright (C) 2001-2014, Parrot Foundation.
 
 =head1 NAME
 
@@ -11,10 +11,10 @@ During execution, the runcore is like the heart of Parrot. The runcore
 controls calling the various opcodes with the correct data, and making
 sure that program flow moves properly. Some runcores, such as the
 I<precomputed C goto runcore> are optimized for speed and don't perform
-many tasks beyond finding and dispatching opcodes. Other runcores,
-such as the I<GC-Debug>, I<debug> and I<profiling> runcores help with
-typical software maintenance and analysis tasks. We'll talk about all
-of these throughout the chapter.
+many tasks beyond finding and dispatching opcodes. Other runcores, such as
+the I<trace>, I<gc_debug>, I<debugger> and I<profiling> runcores help with
+typical software maintenance and analysis tasks. We'll talk about all of
+these throughout the chapter.
 
 Runcores must pass execution to each opcode in the incoming bytecode
 stream. This is called I<dispatching> the opcodes. Because the different
@@ -190,7 +190,7 @@ will not have access to this core if it is built with a different compiler.
 
 =head2 Tracing Core
 
-To come.
+Essentially a slow core with added debugging output per op.
 
 =head2 Profiling Core
 
@@ -211,24 +211,20 @@ printed to the STDERR output for later analysis.
 
 =head2 GC Debug Core
 
-Parrot's garbage collector has been known as a weakness in the system
-for several years. In fact, the garbage collector and memory management
-subsystem was one of the last systems to be improved and rewritten before
-the release of version 1.0. It's not that garbage collection isn't
-important, but instead that it was so hard to do earlier in the project.
+The older Parrot's garbage collectors has been known as weakness in the
+system for several years. Early on when the GC was such a weakness, and
+later when the GC was under active development, it was useful to have an
+operational mode that would really exercise the GC and find bugs that
+otherwise could hide by sheer chance. The GC debug runcore was this
+tool. The core executes a complete collection iteration between every
+single opcode. The throughput performance is terrible, but that's not the
+point: it's almost guaranteed to find problems in the memory system if
+they exist.
 
-Early on when the GC was such a weakness, and later when the GC was under
-active development, it was useful to have an operational mode that would
-really exercise the GC and find bugs that otherwise could hide by sheer
-chance. The GC debug runcore was this tool. The core executes a complete
-collection iteration between every single opcode. The throughput
-performance is terrible, but that's not the point: it's almost guaranteed
-to find problems in the memory system if they exist.
+=head2 Debugger Core
 
-=head2 Debug Core
-
-The debug core works like a normal software debugger, such as GDB. The
-debug core executes each opcode, and then prompts the user to enter a
+The debugger core works like a normal software debugger, such as GDB. The
+debugger core executes each opcode, and then prompts the user to enter a
 command. These commands can be used to continue execution, step to the
 next opcode, or examine and manipulate data from the executing program.
 
@@ -242,7 +238,6 @@ next opcode, or examine and manipulate data from the executing program.
 */
 
 #include "parrot/runcore_api.h"
-#include "parrot/embed.h"
 #include "parrot/runcore_trace.h"
 #include "cores.str"
 
@@ -253,10 +248,6 @@ next opcode, or examine and manipulate data from the executing program.
 #include "pmc/pmc_sub.h"
 #include "pmc/pmc_callcontext.h"
 
-#ifdef WIN32
-#  define getpid _getpid
-#endif
-
 /* HEADERIZER HFILE: include/parrot/runcore_api.h */
 
 /* HEADERIZER BEGIN: static */
@@ -265,7 +256,7 @@ next opcode, or examine and manipulate data from the executing program.
 PARROT_WARN_UNUSED_RESULT
 PARROT_CAN_RETURN_NULL
 static opcode_t * runops_debugger_core(PARROT_INTERP,
-    SHIM(Parrot_runcore_t *runcore),
+    Parrot_runcore_t *runcore,
     ARGIN(opcode_t *pc))
         __attribute__nonnull__(1)
         __attribute__nonnull__(3);
@@ -282,7 +273,7 @@ static opcode_t * runops_exec_core(PARROT_INTERP,
 PARROT_WARN_UNUSED_RESULT
 PARROT_CAN_RETURN_NULL
 static opcode_t * runops_fast_core(PARROT_INTERP,
-    SHIM(Parrot_runcore_t *runcore),
+    Parrot_runcore_t *runcore,
     ARGIN(opcode_t *pc))
         __attribute__nonnull__(1)
         __attribute__nonnull__(3);
@@ -290,7 +281,7 @@ static opcode_t * runops_fast_core(PARROT_INTERP,
 PARROT_WARN_UNUSED_RESULT
 PARROT_CAN_RETURN_NULL
 static opcode_t * runops_gc_debug_core(PARROT_INTERP,
-    SHIM(Parrot_runcore_t *runcore),
+    Parrot_runcore_t *runcore,
     ARGIN(opcode_t *pc))
         __attribute__nonnull__(1)
         __attribute__nonnull__(3);
@@ -298,7 +289,7 @@ static opcode_t * runops_gc_debug_core(PARROT_INTERP,
 PARROT_WARN_UNUSED_RESULT
 PARROT_CAN_RETURN_NULL
 static opcode_t * runops_slow_core(PARROT_INTERP,
-    SHIM(Parrot_runcore_t *runcore),
+    Parrot_runcore_t *runcore,
     ARGIN(opcode_t *pc))
         __attribute__nonnull__(1)
         __attribute__nonnull__(3);
@@ -499,17 +490,8 @@ runops_fast_core(PARROT_INTERP, SHIM(Parrot_runcore_t *runcore), ARGIN(opcode_t 
 {
     ASSERT_ARGS(runops_fast_core)
 
-    /* disable pc */
-    Parrot_pcc_set_pc(interp, CURRENT_CONTEXT(interp), NULL);
-
     while (pc) {
-        /* TODO
-         * Decide do we need check here.
-         * Fast-core cause segfaults even on test suite
-        if (pc < code_start || pc >= code_end)
-            Parrot_ex_throw_from_c_args(interp, NULL, 1,
-                "attempt to access code outside of current code segment");
-        */
+        Parrot_pcc_set_pc(interp, CURRENT_CONTEXT(interp), pc);
         DO_OP(pc, interp);
     }
 
@@ -570,16 +552,16 @@ runops_trace_core(PARROT_INTERP, ARGIN(opcode_t *pc))
 
         /* set the top of the stack so GC can trace it for GC-able pointers
          * see trace_system_areas() in src/gc/system.c */
-        debugger->lo_var_ptr = interp->lo_var_ptr;
+        /* Chandon FIXME: debugger */
+        /* debugger->lo_var_ptr = interp->lo_var_ptr; */
 
         pio = Parrot_io_STDERR(debugger);
 
-        if (Parrot_io_is_tty(debugger, pio))
-            Parrot_io_setlinebuf(debugger, pio);
-        else {
+        if (!Parrot_io_is_tty_handle(debugger, pio)) {
             /* this is essential (100 x faster!)  and should probably
              * be in init/open code */
-            Parrot_io_setbuf(debugger, pio, 8192);
+            Parrot_io_buffer_add_to_handle(debugger, pio, IO_PTR_IDX_WRITE_BUFFER, 8192,
+                                           BUFFER_FLAGS_ANY);
         }
     }
 
@@ -587,7 +569,7 @@ runops_trace_core(PARROT_INTERP, ARGIN(opcode_t *pc))
     while (pc) {
         size_t runs;
         if (pc < code_start || pc >= code_end)
-            Parrot_ex_throw_from_c_args(interp, NULL, 1,
+            Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_OUT_OF_BOUNDS,
                 "attempt to access code outside of current code segment");
 
         Parrot_pcc_set_pc(interp, CURRENT_CONTEXT(interp), pc);
@@ -638,7 +620,7 @@ runops_slow_core(PARROT_INTERP, SHIM(Parrot_runcore_t *runcore), ARGIN(opcode_t 
 
     while (pc) {
         if (pc < code_start || pc >= code_end)
-            Parrot_ex_throw_from_c_args(interp, NULL, 1,
+            Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_OUT_OF_BOUNDS,
                 "attempt to access code outside of current code segment");
 
         Parrot_pcc_set_pc(interp, CURRENT_CONTEXT(interp), pc);
@@ -671,7 +653,7 @@ runops_gc_debug_core(PARROT_INTERP, SHIM(Parrot_runcore_t *runcore), ARGIN(opcod
     ASSERT_ARGS(runops_gc_debug_core)
     while (pc) {
         if (pc < code_start || pc >= code_end)
-            Parrot_ex_throw_from_c_args(interp, NULL, 1,
+            Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_OUT_OF_BOUNDS,
                 "attempt to access code outside of current code segment");
 
         Parrot_gc_mark_and_sweep(interp, GC_trace_stack_FLAG);
@@ -692,7 +674,7 @@ runops_gc_debug_core(PARROT_INTERP, SHIM(Parrot_runcore_t *runcore), ARGIN(opcod
 =item C<static opcode_t * runops_debugger_core(PARROT_INTERP, Parrot_runcore_t
 *runcore, opcode_t *pc)>
 
-Used by the debugger, under construction
+Used by the debugger, under construction.
 
 =cut
 
@@ -712,7 +694,7 @@ runops_debugger_core(PARROT_INTERP, SHIM(Parrot_runcore_t *runcore), ARGIN(opcod
 
     while (pc) {
         if (pc < interp->code->base.data || pc >= interp->code->base.data + interp->code->base.size)
-            Parrot_ex_throw_from_c_args(interp, NULL, 1,
+            Parrot_ex_throw_from_c_noargs(interp, EXCEPTION_OUT_OF_BOUNDS,
                     "attempt to access code outside of current code segment");
 
         if (interp->pdb->state & PDB_GCDEBUG)
@@ -776,6 +758,7 @@ get_core_op_lib_init(SHIM_INTERP, ARGIN(Parrot_runcore_t *runcore))
 *runcore, opcode_t *pc)>
 
 Runs the native executable version of the specified opcode.
+Currently disabled.
 
 =cut
 
@@ -799,6 +782,8 @@ runops_exec_core(PARROT_INTERP, ARGIN(Parrot_runcore_t *runcore), ARGIN(opcode_t
 /*
 
 =back
+
+=cut
 
 */
 
